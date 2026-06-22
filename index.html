@@ -141,7 +141,7 @@
               <input id="characterKeywords" name="keywords" type="text" autocomplete="off" placeholder="fantasy, heist, cozy" />
             </label>
 
-            <label>
+            <label class="thumbnail-field">
               Thumbnail URL
               <input id="characterThumbnail" name="thumbnail" type="url" autocomplete="off" placeholder="Optional image URL" />
             </label>
@@ -243,6 +243,14 @@
             <input id="maxTokensInput" type="number" min="64" max="2048" step="64" value="512" />
           </label>
         </section>
+
+        <nav class="studio-tabs" aria-label="Studio tools">
+          <a href="#persona-title" aria-current="page">Studio</a>
+          <a href="#repositories-title">Repos</a>
+          <a href="#model-title">Model</a>
+          <a href="#nsfw-title">NSFW</a>
+          <a href="#settings-title">Gen</a>
+        </nav>
       </aside>
     </div>
 
@@ -290,6 +298,6 @@
       </section>
     </div>
 
-    <script type="module" src="./app.js?v=mobileagenet-external-data-v2"></script>
+    <script type="module" src="./app.js?v=dark-studio-ui-v1"></script>
   </body>
 </html>

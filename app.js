@@ -84,8 +84,8 @@ const PROFILE_DEFAULT = {
 
 const DEFAULT_CHARACTERS = [
   {
-    id: "new-persona",
-    name: "New Persona",
+    id: "liora",
+    name: "Liora Story",
     description: "",
     personality: "",
     scenario: "",
