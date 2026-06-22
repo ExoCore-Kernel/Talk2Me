@@ -73,6 +73,7 @@ const AGE_GATE_DEFAULT = {
   checkedAt: null,
   threshold: AGE_GATE_MINIMUM,
   lastError: "",
+  lastMessage: "",
 };
 const PROFILE_DEFAULT = {
   name: "",
@@ -416,6 +417,11 @@ function stopAgeCamera() {
   elements.captureAgeButton.disabled = true;
 }
 
+function setAgeGateMessage(message) {
+  state.ageGate.lastMessage = message;
+  elements.ageGateStatus.textContent = message;
+}
+
 function drawAgeFrame() {
   const video = elements.ageVideo;
   if (!video.videoWidth || !video.videoHeight) {
@@ -566,7 +572,7 @@ function ageFromOutputTensor(tensor, modelUrl, inputName, outputName, outputShap
 
   if (values.length > MOBILEAGENET_MAX_AGE + 1) {
     throw new Error(
-      `Loaded ONNX file does not look like an age estimator. ${modelUrl} output "${outputName}" has ${values.length} values (${outputShape.join("x") || "unknown shape"}), but Talk2Me expects a scalar age or age buckets. Check that the uploaded file is MobileAgeNet, not a generic classifier.`,
+      `Loaded ONNX file does not look like MobileAgeNet. ${modelUrl} output "${outputName}" has ${values.length} values (${outputShape.join("x") || "unknown shape"}), so it looks like a generic classifier instead of an age estimator. Upload a MobileAgeNet age-estimation ONNX file as assets/mobileagenet/mobileagenet.onnx.`,
     );
   }
 
@@ -584,6 +590,9 @@ async function estimateAge(canvas) {
   const inputSpec = inputSpecForSession(session, inputName);
   const tensor = new ort.Tensor("float32", preprocessAgeCanvas(canvas, inputSpec), inputSpec.shape);
   const output = await session.run({ [inputName]: tensor });
+  if (!output[outputName]) {
+    throw new Error(`Age model did not return expected output "${outputName}".`);
+  }
   const scaledAge = ageFromOutputTensor(
     output[outputName],
     modelUrl,
@@ -601,26 +610,31 @@ async function estimateAge(canvas) {
 
 async function verifyAge() {
   elements.captureAgeButton.disabled = true;
-  elements.ageGateStatus.textContent = "Running MobileAgeNet locally...";
+  setAgeGateMessage("Running MobileAgeNet locally...");
 
   try {
     const canvas = drawAgeFrame();
     const estimatedAge = await estimateAge(canvas);
     const passed = estimatedAge >= AGE_GATE_MINIMUM;
+    const roundedAge = Math.round(estimatedAge * 10) / 10;
 
     state.ageGate = {
       verified: passed,
       nsfwEnabled: passed,
-      estimatedAge: Math.round(estimatedAge * 10) / 10,
+      estimatedAge: roundedAge,
       checkedAt: new Date().toISOString(),
       threshold: AGE_GATE_MINIMUM,
-      lastError: "",
+      lastError: passed ? "" : `Locked. Local estimate ${roundedAge} is below required ${AGE_GATE_MINIMUM}.`,
+      lastMessage: passed
+        ? `Verified. Local estimate ${roundedAge}; NSFW mode enabled.`
+        : `Locked. Local estimate ${roundedAge}; required ${AGE_GATE_MINIMUM} or older.`,
     };
   } catch (error) {
     console.error(error);
     state.ageGate = {
       ...AGE_GATE_DEFAULT,
       lastError: `NSFW mode locked. ${error.message}`,
+      lastMessage: `NSFW mode locked. ${error.message}`,
     };
   } finally {
     stopAgeCamera();
@@ -1042,14 +1056,16 @@ function renderAgeGate() {
   elements.nsfwModeLabel.textContent = allowed ? "Enabled" : verified ? "Verified, off" : "Locked";
   elements.nsfwToggleButton.textContent = allowed ? "Disable" : verified ? "Enable" : "Verify";
 
-  if (allowed) {
+  if (state.ageGate.lastMessage) {
+    elements.ageGateStatus.textContent = state.ageGate.lastMessage;
+  } else if (state.ageGate.lastError) {
+    elements.ageGateStatus.textContent = state.ageGate.lastError;
+  } else if (allowed) {
     elements.ageGateStatus.textContent = `NSFW mode enabled. Local estimate: ${estimate.toFixed(1)}. Threshold: ${AGE_GATE_MINIMUM}.`;
   } else if (verified) {
     elements.ageGateStatus.textContent = `Verified locally. Local estimate: ${estimate.toFixed(1)}. NSFW mode is off.`;
   } else if (hasEstimate) {
     elements.ageGateStatus.textContent = `Locked. Last local estimate: ${estimate.toFixed(1)}. Required: ${AGE_GATE_MINIMUM} or older.`;
-  } else if (state.ageGate.lastError) {
-    elements.ageGateStatus.textContent = state.ageGate.lastError;
   } else {
     elements.ageGateStatus.textContent = `Requires local MobileAgeNet age estimate of ${AGE_GATE_MINIMUM} or older. No image is stored.`;
   }
