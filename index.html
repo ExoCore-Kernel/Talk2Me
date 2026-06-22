@@ -16,31 +16,149 @@
     </noscript>
 
     <div class="app-shell">
-      <aside class="sidebar" aria-label="Characters and persona editor">
-        <header class="brand">
-          <div class="brand-mark" aria-hidden="true">T2M</div>
+      <aside class="library-panel" aria-label="Character library">
+        <header class="app-header">
           <div>
             <h1>Talk2Me</h1>
-            <p>Local WebLLM roleplay</p>
+            <p>Continue your stories</p>
+          </div>
+          <div class="header-actions">
+            <button id="searchButton" class="round-button" type="button" title="Search" aria-label="Search">
+              <span aria-hidden="true">⌕</span>
+            </button>
+            <button id="profileButton" class="profile-button" type="button" title="Profile" aria-label="Profile">
+              <span id="profileInitials">You</span>
+            </button>
           </div>
         </header>
 
-        <section class="character-section" aria-labelledby="characters-title">
+        <section class="library-section" aria-labelledby="stories-title">
           <div class="section-heading">
-            <h2 id="characters-title">Characters</h2>
-            <button id="newCharacterButton" class="icon-button" type="button" title="New character" aria-label="New character">
-              +
-            </button>
+            <h2 id="stories-title">Characters</h2>
+            <button id="newCharacterButton" class="small-action" type="button">New</button>
           </div>
           <div id="characterList" class="character-list" aria-live="polite"></div>
         </section>
 
-        <section class="repository-section" aria-labelledby="repositories-title">
+        <section class="library-section discover-section" aria-labelledby="discover-title">
+          <h2 id="discover-title">Discover more</h2>
+          <div class="genre-row" aria-label="Character genres">
+            <button class="genre-card" type="button">
+              <span aria-hidden="true">✦</span>
+              Fantasy
+            </button>
+            <button class="genre-card" type="button">
+              <span aria-hidden="true">⌁</span>
+              Sci-Fi
+            </button>
+            <button class="genre-card" type="button">
+              <span aria-hidden="true">☰</span>
+              School Life
+            </button>
+            <button class="genre-card" type="button">
+              <span aria-hidden="true">♡</span>
+              Drama
+            </button>
+          </div>
+        </section>
+
+        <nav class="bottom-nav" aria-label="Primary">
+          <a href="#stories-title" aria-current="page">Home</a>
+          <a href="#repositories-title">Explore</a>
+          <a href="#persona-title">Library</a>
+          <a href="#chatLog">Chats</a>
+        </nav>
+      </aside>
+
+      <main class="chat-phone" aria-label="Roleplay chat">
+        <header class="chat-header">
+          <button id="backButton" class="round-button" type="button" title="Back" aria-label="Back">
+            <span aria-hidden="true">‹</span>
+          </button>
+          <div id="activeCharacterAvatar" class="active-avatar" aria-hidden="true"></div>
+          <div class="chat-title">
+            <h2 id="activeCharacterName">New Persona</h2>
+            <span><i aria-hidden="true"></i> AI Character</span>
+          </div>
+          <button id="moreButton" class="round-button" type="button" title="More" aria-label="More">
+            <span aria-hidden="true">⋯</span>
+          </button>
+        </header>
+
+        <section id="chatLog" class="chat-log" aria-live="polite"></section>
+
+        <form id="composerForm" class="composer">
+          <button class="spark-button" type="button" title="Scene tools" aria-label="Scene tools">
+            <span aria-hidden="true">✦</span>
+          </button>
+          <label class="sr-only" for="messageInput">Message</label>
+          <textarea
+            id="messageInput"
+            name="message"
+            rows="1"
+            placeholder="Type your message..."
+            autocomplete="off"
+          ></textarea>
+          <button id="stopButton" class="send-button stop" type="button" title="Stop" aria-label="Stop" disabled>
+            <span aria-hidden="true">■</span>
+          </button>
+          <button id="sendButton" class="send-button" type="submit" title="Send" aria-label="Send">
+            <span aria-hidden="true">➤</span>
+          </button>
+        </form>
+      </main>
+
+      <aside class="studio-panel" aria-label="Character and model settings">
+        <section class="studio-card" aria-labelledby="persona-title">
+          <div class="section-heading">
+            <h2 id="persona-title">Character Studio</h2>
+            <button id="resetCharacterButton" class="small-action muted" type="button">Reset</button>
+          </div>
+
+          <form id="personaForm" class="stacked-form">
+            <label>
+              Name
+              <input id="characterName" name="name" type="text" autocomplete="off" placeholder="Name the persona" />
+            </label>
+
+            <label>
+              Short Description
+              <textarea id="characterDescription" name="description" rows="3" placeholder="Who is this character?"></textarea>
+            </label>
+
+            <label>
+              Personality
+              <textarea id="characterPersonality" name="personality" rows="3" placeholder="How do they speak and react?"></textarea>
+            </label>
+
+            <label>
+              Scenario
+              <textarea id="characterScenario" name="scenario" rows="3" placeholder="Where does the scene begin?"></textarea>
+            </label>
+
+            <label>
+              Keywords
+              <input id="characterKeywords" name="keywords" type="text" autocomplete="off" placeholder="fantasy, heist, cozy" />
+            </label>
+
+            <label>
+              Thumbnail URL
+              <input id="characterThumbnail" name="thumbnail" type="url" autocomplete="off" placeholder="Optional image URL" />
+            </label>
+
+            <label>
+              Opening Message
+              <textarea id="characterOpening" name="opening" rows="3" placeholder="Optional first message from the character"></textarea>
+            </label>
+          </form>
+        </section>
+
+        <section class="studio-card repository-section" aria-labelledby="repositories-title">
           <div class="section-heading">
             <h2 id="repositories-title">Repositories</h2>
           </div>
 
-          <form id="repositoryForm" class="repository-form">
+          <form id="repositoryForm" class="stacked-form">
             <label>
               Repo URL
               <input
@@ -54,100 +172,14 @@
             <button id="loadRepositoryButton" class="text-button primary full" type="submit">Load Repo</button>
           </form>
 
-          <div id="repositoryStatus" class="model-status" role="status">
+          <div id="repositoryStatus" class="status-box" role="status">
             Load a character repository with an index.json file.
           </div>
           <div id="repositoryMeta" class="repository-meta" hidden></div>
           <div id="repositoryCharacterList" class="repo-character-list" aria-live="polite"></div>
         </section>
 
-        <section class="persona-section" aria-labelledby="persona-title">
-          <div class="section-heading">
-            <h2 id="persona-title">Persona Card</h2>
-            <button id="resetCharacterButton" class="text-button subtle" type="button">Reset</button>
-          </div>
-
-          <form id="personaForm" class="persona-form">
-            <label>
-              Name
-              <input id="characterName" name="name" type="text" autocomplete="off" placeholder="Name the persona" />
-            </label>
-
-            <label>
-              Description
-              <textarea id="characterDescription" name="description" rows="4" placeholder="Who is this character?"></textarea>
-            </label>
-
-            <label>
-              Personality
-              <textarea id="characterPersonality" name="personality" rows="4" placeholder="How do they speak, react, and carry themselves?"></textarea>
-            </label>
-
-            <label>
-              Scenario
-              <textarea id="characterScenario" name="scenario" rows="4" placeholder="Where does the scene begin?"></textarea>
-            </label>
-
-            <label>
-              Keywords
-              <input id="characterKeywords" name="keywords" type="text" autocomplete="off" placeholder="genre, role, tone" />
-            </label>
-
-            <label>
-              Thumbnail URL
-              <input id="characterThumbnail" name="thumbnail" type="url" autocomplete="off" placeholder="Optional image URL" />
-            </label>
-
-            <label>
-              Opening Message
-              <textarea id="characterOpening" name="opening" rows="4" placeholder="Optional first message from the character"></textarea>
-            </label>
-
-            <div class="gate-row">
-              <span>ADULT_CONTENT_ALLOWED</span>
-              <strong id="adultGateValue">false</strong>
-            </div>
-          </form>
-        </section>
-      </aside>
-
-      <main class="stage" aria-label="Roleplay chat">
-        <header class="stage-header">
-          <div class="scene-title">
-            <span class="eyebrow">Now roleplaying</span>
-            <h2 id="activeCharacterName">New Persona</h2>
-          </div>
-
-          <div class="stage-actions">
-            <button id="downloadChatButton" class="icon-button" type="button" title="Download chat" aria-label="Download chat">
-              ↓
-            </button>
-            <button id="clearChatButton" class="icon-button danger" type="button" title="Clear chat" aria-label="Clear chat">
-              ×
-            </button>
-          </div>
-        </header>
-
-        <section id="chatLog" class="chat-log" aria-live="polite"></section>
-
-        <form id="composerForm" class="composer">
-          <label class="sr-only" for="messageInput">Message</label>
-          <textarea
-            id="messageInput"
-            name="message"
-            rows="3"
-            placeholder="Enter your next move..."
-            autocomplete="off"
-          ></textarea>
-          <div class="composer-actions">
-            <button id="stopButton" class="text-button secondary" type="button" disabled>Stop</button>
-            <button id="sendButton" class="text-button primary" type="submit">Send</button>
-          </div>
-        </form>
-      </main>
-
-      <aside class="control-panel" aria-label="Model and generation settings">
-        <section aria-labelledby="model-title">
+        <section class="studio-card" aria-labelledby="model-title">
           <h2 id="model-title">Model</h2>
           <label>
             Runtime
@@ -164,21 +196,21 @@
           </label>
 
           <button id="loadModelButton" class="text-button primary full" type="button">Load Model</button>
-          <div id="modelStatus" class="model-status" role="status">Waiting for a model.</div>
+          <div id="modelStatus" class="status-box" role="status">Waiting for a model.</div>
           <progress id="loadProgress" value="0" max="1"></progress>
         </section>
 
-        <section class="age-gate" aria-labelledby="nsfw-title">
+        <section class="studio-card age-gate" aria-labelledby="nsfw-title">
           <h2 id="nsfw-title">NSFW Gate</h2>
           <div class="setting-row">
             <div>
               <strong>NSFW Mode</strong>
               <span id="nsfwModeLabel">Locked</span>
             </div>
-            <button id="nsfwToggleButton" class="text-button secondary" type="button">Enable</button>
+            <button id="nsfwToggleButton" class="text-button secondary" type="button">Verify</button>
           </div>
 
-          <div id="ageGateStatus" class="model-status" role="status">
+          <div id="ageGateStatus" class="status-box" role="status">
             Requires local MobileAgeNet age estimate of 25 or older.
           </div>
 
@@ -192,7 +224,7 @@
           </div>
         </section>
 
-        <section aria-labelledby="settings-title">
+        <section class="studio-card compact-card" aria-labelledby="settings-title">
           <h2 id="settings-title">Generation</h2>
           <label>
             Temperature
@@ -211,15 +243,51 @@
             <input id="maxTokensInput" type="number" min="64" max="2048" step="64" value="512" />
           </label>
         </section>
-
-        <section aria-labelledby="prompt-title">
-          <div class="section-heading">
-            <h2 id="prompt-title">Prompt</h2>
-            <button id="copyPromptButton" class="text-button subtle" type="button">Copy</button>
-          </div>
-          <pre id="promptPreview" class="prompt-preview"></pre>
-        </section>
       </aside>
+    </div>
+
+    <div id="profileModal" class="modal-backdrop" hidden>
+      <section class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title">
+        <header class="modal-header">
+          <div>
+            <h2 id="profile-title">Your Profile</h2>
+            <p>Details saved here are added privately to the AI context.</p>
+          </div>
+          <button id="closeProfileButton" class="round-button" type="button" aria-label="Close profile">×</button>
+        </header>
+
+        <form id="profileForm" class="stacked-form">
+          <label>
+            Name or Nickname
+            <input id="profileName" name="profileName" type="text" autocomplete="name" placeholder="What should characters call you?" />
+          </label>
+
+          <label>
+            Pronouns
+            <input id="profilePronouns" name="profilePronouns" type="text" autocomplete="off" placeholder="Optional" />
+          </label>
+
+          <label>
+            About You
+            <textarea id="profileAbout" name="profileAbout" rows="3" placeholder="Useful background the AI can remember while roleplaying"></textarea>
+          </label>
+
+          <label>
+            Roleplay Preferences
+            <textarea id="profilePreferences" name="profilePreferences" rows="3" placeholder="Tone, pacing, favorite genres, writing style"></textarea>
+          </label>
+
+          <label>
+            Boundaries
+            <textarea id="profileBoundaries" name="profileBoundaries" rows="3" placeholder="Topics, styles, or interactions to avoid"></textarea>
+          </label>
+
+          <div class="modal-actions">
+            <button id="clearProfileButton" class="text-button subtle" type="button">Clear</button>
+            <button class="text-button primary" type="submit">Save Profile</button>
+          </div>
+        </form>
+      </section>
     </div>
 
     <script type="module" src="./app.js"></script>
