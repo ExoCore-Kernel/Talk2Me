@@ -60,10 +60,7 @@ const MODEL_OPTIONS = [
 const AGE_GATE_MINIMUM = 25;
 const MOBILEAGENET_INPUT_SIZE = 224;
 const MOBILEAGENET_MAX_AGE = 116;
-const AGE_MODEL_URLS = [
-  "./assets/mobileagenet/mobileagenet.onnx",
-  "./assets/mobileagenet/mobilenetv2-10.onnx",
-];
+const MOBILEAGENET_MODEL_URL = "./assets/mobileagenet/mobileagenet.onnx";
 const ONNX_RUNTIME_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js";
 const ONNX_RUNTIME_WASM_PATH = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 const AGE_GATE_DEFAULT = {
@@ -337,30 +334,22 @@ async function loadMobileAgeNetSession() {
   const ort = await loadONNXRuntime();
 
   mobileAgeNetSessionPromise ??= (async () => {
-    const errors = [];
-
-    for (const modelUrl of AGE_MODEL_URLS) {
-      try {
-        const response = await fetch(modelUrl, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error(`${response.status} ${response.statusText}`);
-        }
-
-        const modelBuffer = await response.arrayBuffer();
-        const session = await ort.InferenceSession.create(modelBuffer, {
-          executionProviders: ["wasm"],
-        });
-
-        return {
-          modelUrl,
-          session,
-        };
-      } catch (error) {
-        errors.push(`${modelUrl}: ${error.message}`);
-      }
+    const response = await fetch(MOBILEAGENET_MODEL_URL, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(
+        `MobileAgeNet model missing at ${MOBILEAGENET_MODEL_URL}. Upload the real age-estimation ONNX file with exactly that name.`,
+      );
     }
 
-    throw new Error(`Could not load local age model. Tried ${errors.join("; ")}`);
+    const modelBuffer = await response.arrayBuffer();
+    const session = await ort.InferenceSession.create(modelBuffer, {
+      executionProviders: ["wasm"],
+    });
+
+    return {
+      modelUrl: MOBILEAGENET_MODEL_URL,
+      session,
+    };
   })();
 
   const loaded = await mobileAgeNetSessionPromise;
