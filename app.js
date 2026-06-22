@@ -60,7 +60,10 @@ const MODEL_OPTIONS = [
 const AGE_GATE_MINIMUM = 25;
 const MOBILEAGENET_INPUT_SIZE = 224;
 const MOBILEAGENET_MAX_AGE = 116;
-const MOBILEAGENET_MODEL_URL = "./assets/mobileagenet/mobileagenet.onnx";
+const AGE_MODEL_URLS = [
+  "./assets/mobileagenet/mobileagenet.onnx",
+  "./assets/mobileagenet/mobilenetv2-10.onnx",
+];
 const ONNX_RUNTIME_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js";
 const ONNX_RUNTIME_WASM_PATH = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 const AGE_GATE_DEFAULT = {
@@ -332,22 +335,38 @@ function loadONNXRuntime() {
 async function loadMobileAgeNetSession() {
   const ort = await loadONNXRuntime();
 
-  mobileAgeNetSessionPromise ??= fetch(MOBILEAGENET_MODEL_URL, { cache: "no-store" })
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`MobileAgeNet model missing at ${MOBILEAGENET_MODEL_URL}`);
+  mobileAgeNetSessionPromise ??= (async () => {
+    const errors = [];
+
+    for (const modelUrl of AGE_MODEL_URLS) {
+      try {
+        const response = await fetch(modelUrl, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`${response.status} ${response.statusText}`);
+        }
+
+        const modelBuffer = await response.arrayBuffer();
+        const session = await ort.InferenceSession.create(modelBuffer, {
+          executionProviders: ["wasm"],
+        });
+
+        return {
+          modelUrl,
+          session,
+        };
+      } catch (error) {
+        errors.push(`${modelUrl}: ${error.message}`);
       }
-      return response.arrayBuffer();
-    })
-    .then((modelBuffer) =>
-      ort.InferenceSession.create(modelBuffer, {
-        executionProviders: ["wasm"],
-      }),
-    );
+    }
+
+    throw new Error(`Could not load local age model. Tried ${errors.join("; ")}`);
+  })();
+
+  const loaded = await mobileAgeNetSessionPromise;
 
   return {
     ort,
-    session: await mobileAgeNetSessionPromise,
+    ...loaded,
   };
 }
 
@@ -428,40 +447,153 @@ function drawAgeFrame() {
   return canvas;
 }
 
-function preprocessAgeCanvas(canvas) {
+function metadataShape(metadata) {
+  return metadata?.dimensions ?? metadata?.dims ?? metadata?.shape ?? null;
+}
+
+function inputSpecForSession(session, inputName) {
+  const metadata = session.inputMetadata?.[inputName];
+  const shape = metadataShape(metadata);
+  if (!Array.isArray(shape) || shape.length !== 4) {
+    return {
+      channelsFirst: true,
+      channels: 3,
+      height: MOBILEAGENET_INPUT_SIZE,
+      width: MOBILEAGENET_INPUT_SIZE,
+      shape: [1, 3, MOBILEAGENET_INPUT_SIZE, MOBILEAGENET_INPUT_SIZE],
+    };
+  }
+
+  const dims = shape.map((value, index) => {
+    const numberValue = Number(value);
+    if (Number.isFinite(numberValue) && numberValue > 0) {
+      return numberValue;
+    }
+    return index === 0 ? 1 : null;
+  });
+
+  const channelsFirst = dims[1] === 3 || dims[1] === 1;
+  const channelsLast = dims[3] === 3 || dims[3] === 1;
+  const channels = channelsFirst ? dims[1] : channelsLast ? dims[3] : 3;
+  const height = channelsFirst ? dims[2] : dims[1];
+  const width = channelsFirst ? dims[3] : dims[2];
+
+  return {
+    channelsFirst: channelsFirst || !channelsLast,
+    channels,
+    height: height || MOBILEAGENET_INPUT_SIZE,
+    width: width || MOBILEAGENET_INPUT_SIZE,
+    shape: [
+      dims[0] || 1,
+      channelsFirst || !channelsLast ? channels : height || MOBILEAGENET_INPUT_SIZE,
+      channelsFirst || !channelsLast ? height || MOBILEAGENET_INPUT_SIZE : width || MOBILEAGENET_INPUT_SIZE,
+      channelsFirst || !channelsLast ? width || MOBILEAGENET_INPUT_SIZE : channels,
+    ],
+  };
+}
+
+function outputShapeForSession(session, outputName) {
+  return metadataShape(session.outputMetadata?.[outputName]) ?? [];
+}
+
+function resizeAgeCanvas(canvas, width, height) {
+  if (canvas.width === width && canvas.height === height) {
+    return canvas;
+  }
+
+  const resized = document.createElement("canvas");
+  resized.width = width;
+  resized.height = height;
+  resized.getContext("2d").drawImage(canvas, 0, 0, width, height);
+  return resized;
+}
+
+function preprocessAgeCanvas(canvas, spec) {
+  const source = resizeAgeCanvas(canvas, spec.width, spec.height);
+  const width = source.width;
+  const height = source.height;
+  const area = width * height;
   const context = canvas.getContext("2d", { willReadFrequently: true });
-  const pixels = context.getImageData(0, 0, MOBILEAGENET_INPUT_SIZE, MOBILEAGENET_INPUT_SIZE).data;
+  const pixels = source.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, width, height).data;
   const mean = [0.485, 0.456, 0.406];
   const std = [0.229, 0.224, 0.225];
-  const area = MOBILEAGENET_INPUT_SIZE * MOBILEAGENET_INPUT_SIZE;
-  const tensorData = new Float32Array(3 * area);
+  const channels = spec.channels === 1 ? 1 : 3;
+  const tensorData = new Float32Array(channels * area);
 
   for (let index = 0; index < area; index += 1) {
     const pixelOffset = index * 4;
-    tensorData[index] = (pixels[pixelOffset] / 255 - mean[0]) / std[0];
-    tensorData[area + index] = (pixels[pixelOffset + 1] / 255 - mean[1]) / std[1];
-    tensorData[area * 2 + index] = (pixels[pixelOffset + 2] / 255 - mean[2]) / std[2];
+    const red = (pixels[pixelOffset] / 255 - mean[0]) / std[0];
+    const green = (pixels[pixelOffset + 1] / 255 - mean[1]) / std[1];
+    const blue = (pixels[pixelOffset + 2] / 255 - mean[2]) / std[2];
+    const gray = red * 0.299 + green * 0.587 + blue * 0.114;
+
+    if (spec.channelsFirst) {
+      tensorData[index] = channels === 1 ? gray : red;
+      if (channels > 1) {
+        tensorData[area + index] = green;
+        tensorData[area * 2 + index] = blue;
+      }
+    } else {
+      const offset = index * channels;
+      tensorData[offset] = channels === 1 ? gray : red;
+      if (channels > 1) {
+        tensorData[offset + 1] = green;
+        tensorData[offset + 2] = blue;
+      }
+    }
   }
 
   return tensorData;
 }
 
+function softmax(values) {
+  const max = Math.max(...values);
+  const exps = values.map((value) => Math.exp(value - max));
+  const sum = exps.reduce((total, value) => total + value, 0);
+  return exps.map((value) => value / sum);
+}
+
+function ageFromOutputTensor(tensor, modelUrl, inputName, outputName, outputShape) {
+  const values = Array.from(tensor.data ?? []);
+  if (values.length === 0) {
+    throw new Error("Age model returned an empty output.");
+  }
+
+  if (values.length === 1) {
+    const rawAge = Number(values[0]);
+    return rawAge >= 0 && rawAge <= 1 ? rawAge * MOBILEAGENET_MAX_AGE : rawAge;
+  }
+
+  if (values.length > MOBILEAGENET_MAX_AGE + 1) {
+    throw new Error(
+      `Loaded ONNX file does not look like an age estimator. ${modelUrl} output "${outputName}" has ${values.length} values (${outputShape.join("x") || "unknown shape"}), but Talk2Me expects a scalar age or age buckets. Check that the uploaded file is MobileAgeNet, not a generic classifier.`,
+    );
+  }
+
+  const looksLikeProbabilities =
+    values.every((value) => value >= 0 && value <= 1) &&
+    Math.abs(values.reduce((total, value) => total + value, 0) - 1) < 0.05;
+  const probabilities = looksLikeProbabilities ? values : softmax(values);
+  return probabilities.reduce((age, probability, index) => age + probability * index, 0);
+}
+
 async function estimateAge(canvas) {
-  const { ort, session } = await loadMobileAgeNetSession();
+  const { ort, session, modelUrl } = await loadMobileAgeNetSession();
   const inputName = session.inputNames[0];
   const outputName = session.outputNames[0];
-  const tensor = new ort.Tensor("float32", preprocessAgeCanvas(canvas), [
-    1,
-    3,
-    MOBILEAGENET_INPUT_SIZE,
-    MOBILEAGENET_INPUT_SIZE,
-  ]);
+  const inputSpec = inputSpecForSession(session, inputName);
+  const tensor = new ort.Tensor("float32", preprocessAgeCanvas(canvas, inputSpec), inputSpec.shape);
   const output = await session.run({ [inputName]: tensor });
-  const rawAge = Number(output[outputName].data[0]);
-  const scaledAge = rawAge >= 0 && rawAge <= 1 ? rawAge * MOBILEAGENET_MAX_AGE : rawAge;
+  const scaledAge = ageFromOutputTensor(
+    output[outputName],
+    modelUrl,
+    inputName,
+    outputName,
+    outputShapeForSession(session, outputName),
+  );
 
   if (!Number.isFinite(scaledAge)) {
-    throw new Error("MobileAgeNet returned an invalid age estimate.");
+    throw new Error(`MobileAgeNet returned an invalid age estimate from input "${inputName}".`);
   }
 
   return Math.max(0, Math.min(MOBILEAGENET_MAX_AGE, scaledAge));
