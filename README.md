@@ -1,25 +1,18 @@
-# Talk2Me
 
-A static GitHub Pages WebLLM roleplaying site with local persona creation, repository-loaded character packs, and placeholders for:
+# Talk2Me -- A local, free, and open source alternative to roleplay apps.
 
-- `RoLLM1-mini`
-- `RoLLM1-pro`
+## Why you'll love Talk2Me
 
-Every chat injects the RoLLM1 roleplay system prompt plus the active persona card. `ADULT_CONTENT_ALLOWED` stays `false` unless the local NSFW age gate passes.
+- Its completely private
+ No data is ever sent to any servers.
+- Its completely local
+The custom trained AI chatbots run on-device.
+- Its open-source
+Feel free to pruise through the surce code.
+- Age verification is on-device
+NSFW content must be age verified though a 
+local AI model. Your photo is never sent to a server.
 
-## Run Locally
-
-```bash
-python3 -m http.server 5173
-```
-
-Then open:
-
-```text
-http://localhost:5173
-```
-
-WebLLM needs WebGPU, so use a recent Chromium-based browser.
 
 ## Character Repositories
 
@@ -88,16 +81,4 @@ Update `MODEL_OPTIONS` in `app.js` if your generated `.wasm` names differ.
 
 ## NSFW Gate
 
-The NSFW gate is intentionally strict:
-
-- Requires a local MobileAgeNet ONNX model at `assets/mobileagenet/mobileagenet.onnx`.
-- Stores only pass/fail metadata, estimated age, threshold, and timestamp in `localStorage`.
-- Does not store the camera image.
-- Requires an estimated age of at least `25`.
-- Keeps NSFW locked if the model is missing, camera access fails, or the estimate is under `25`.
-
-I could not find an official public MobileAgeNet model artifact to download, so the app is wired for the local file but does not include the weights.
-
-## GitHub Pages
-
-Commit this folder to a GitHub repo, then enable Pages from the `main` branch root. The `.nojekyll` file is included so GitHub Pages serves model assets as plain static files.
+To ensure NSFW content is never shown to underage users, a on device, local face recognition age check is required to use the NSFW models.
