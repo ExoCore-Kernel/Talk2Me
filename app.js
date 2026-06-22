@@ -61,6 +61,7 @@ const AGE_GATE_MINIMUM = 25;
 const MOBILEAGENET_INPUT_SIZE = 224;
 const MOBILEAGENET_MAX_AGE = 116;
 const MOBILEAGENET_MODEL_URL = "./assets/mobileagenet/mobileagenet.onnx";
+const MOBILEAGENET_EXTERNAL_DATA_FILES = ["MobileAgeNet.onnx.data", "mobileagenet.onnx.data"];
 const ONNX_RUNTIME_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js";
 const ONNX_RUNTIME_WASM_PATH = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 const AGE_GATE_DEFAULT = {
@@ -330,6 +331,46 @@ function loadONNXRuntime() {
   return onnxRuntimePromise;
 }
 
+function mobileAgeNetAssetUrl(fileName) {
+  const baseUrl = MOBILEAGENET_MODEL_URL.slice(0, MOBILEAGENET_MODEL_URL.lastIndexOf("/") + 1);
+  return `${baseUrl}${encodeURIComponent(fileName)}`;
+}
+
+function externalDataNamesFromModel(modelBuffer) {
+  const modelText = new TextDecoder("latin1").decode(modelBuffer);
+  const matches = modelText.match(/[A-Za-z0-9_.-]+\.onnx\.data/g) ?? [];
+  return [...new Set([...matches, ...MOBILEAGENET_EXTERNAL_DATA_FILES])];
+}
+
+async function loadMobileAgeNetExternalData(modelBuffer) {
+  const externalDataNames = externalDataNamesFromModel(modelBuffer);
+  const loadErrors = [];
+
+  for (const fileName of externalDataNames) {
+    try {
+      const response = await fetch(mobileAgeNetAssetUrl(fileName), { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+
+      return {
+        data: new Uint8Array(await response.arrayBuffer()),
+        path: fileName,
+      };
+    } catch (error) {
+      loadErrors.push(`${fileName}: ${error.message}`);
+    }
+  }
+
+  if (externalDataNames.length > 0) {
+    throw new Error(
+      `MobileAgeNet needs its external weights file next to mobileagenet.onnx. Upload MobileAgeNet.onnx.data to assets/mobileagenet/. Tried ${loadErrors.join("; ")}`,
+    );
+  }
+
+  return null;
+}
+
 async function loadMobileAgeNetSession() {
   const ort = await loadONNXRuntime();
 
@@ -342,9 +383,16 @@ async function loadMobileAgeNetSession() {
     }
 
     const modelBuffer = await response.arrayBuffer();
-    const session = await ort.InferenceSession.create(modelBuffer, {
+    const externalData = await loadMobileAgeNetExternalData(modelBuffer);
+    const sessionOptions = {
       executionProviders: ["wasm"],
-    });
+    };
+
+    if (externalData) {
+      sessionOptions.externalData = [externalData];
+    }
+
+    const session = await ort.InferenceSession.create(modelBuffer, sessionOptions);
 
     return {
       modelUrl: MOBILEAGENET_MODEL_URL,
