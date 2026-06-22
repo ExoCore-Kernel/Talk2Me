@@ -488,7 +488,8 @@ function normalizeGithubRawUrl(url) {
   const parts = url.pathname.split("/").filter(Boolean);
   const blobIndex = parts.indexOf("blob");
   if (parts.length >= 5 && blobIndex === 2) {
-    const [owner, repo] = parts;
+    const owner = parts[0];
+    const repo = parts[1].replace(/\.git$/, "");
     const branch = parts[3];
     const filePath = parts.slice(4).join("/");
     return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
