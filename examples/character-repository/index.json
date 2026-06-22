@@ -1,0 +1,13 @@
+{
+  "name": "Talk2Me Example Cast",
+  "author": "Talk2Me",
+  "itemCount": 1,
+  "items": [
+    {
+      "name": "Avery Vale",
+      "description": "A careful detective with a dry sense of humor.",
+      "thumbnail": "./thumbnails/avery.svg",
+      "character": "./characters/avery.json"
+    }
+  ]
+}

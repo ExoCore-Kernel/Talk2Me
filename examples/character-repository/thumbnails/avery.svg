@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Avery Vale thumbnail">
+  <rect width="128" height="128" fill="#15151c"/>
+  <circle cx="64" cy="52" r="24" fill="#27c0aa"/>
+  <path d="M22 116c6-30 22-45 42-45s36 15 42 45" fill="#e64f62"/>
+  <path d="M34 45h60l-10-15H44z" fill="#f0b84d"/>
+  <path d="M42 62c12 8 32 8 44 0" fill="none" stroke="#101014" stroke-width="6" stroke-linecap="round"/>
+</svg>

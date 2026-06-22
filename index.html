@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Talk2Me</title>
+    <meta
+      name="description"
+      content="A local WebLLM roleplaying site for character cards and private browser-based chat."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <noscript>
+      <div class="noscript">Talk2Me needs JavaScript enabled to run WebLLM in your browser.</div>
+    </noscript>
+
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Characters and persona editor">
+        <header class="brand">
+          <div class="brand-mark" aria-hidden="true">T2M</div>
+          <div>
+            <h1>Talk2Me</h1>
+            <p>Local WebLLM roleplay</p>
+          </div>
+        </header>
+
+        <section class="character-section" aria-labelledby="characters-title">
+          <div class="section-heading">
+            <h2 id="characters-title">Characters</h2>
+            <button id="newCharacterButton" class="icon-button" type="button" title="New character" aria-label="New character">
+              +
+            </button>
+          </div>
+          <div id="characterList" class="character-list" aria-live="polite"></div>
+        </section>
+
+        <section class="repository-section" aria-labelledby="repositories-title">
+          <div class="section-heading">
+            <h2 id="repositories-title">Repositories</h2>
+          </div>
+
+          <form id="repositoryForm" class="repository-form">
+            <label>
+              Repo URL
+              <input
+                id="repositoryUrl"
+                name="repositoryUrl"
+                type="url"
+                autocomplete="off"
+                placeholder="https://github.com/user/character-pack"
+              />
+            </label>
+            <button id="loadRepositoryButton" class="text-button primary full" type="submit">Load Repo</button>
+          </form>
+
+          <div id="repositoryStatus" class="model-status" role="status">
+            Load a character repository with an index.json file.
+          </div>
+          <div id="repositoryMeta" class="repository-meta" hidden></div>
+          <div id="repositoryCharacterList" class="repo-character-list" aria-live="polite"></div>
+        </section>
+
+        <section class="persona-section" aria-labelledby="persona-title">
+          <div class="section-heading">
+            <h2 id="persona-title">Persona Card</h2>
+            <button id="resetCharacterButton" class="text-button subtle" type="button">Reset</button>
+          </div>
+
+          <form id="personaForm" class="persona-form">
+            <label>
+              Name
+              <input id="characterName" name="name" type="text" autocomplete="off" placeholder="Name the persona" />
+            </label>
+
+            <label>
+              Description
+              <textarea id="characterDescription" name="description" rows="4" placeholder="Who is this character?"></textarea>
+            </label>
+
+            <label>
+              Personality
+              <textarea id="characterPersonality" name="personality" rows="4" placeholder="How do they speak, react, and carry themselves?"></textarea>
+            </label>
+
+            <label>
+              Scenario
+              <textarea id="characterScenario" name="scenario" rows="4" placeholder="Where does the scene begin?"></textarea>
+            </label>
+
+            <label>
+              Keywords
+              <input id="characterKeywords" name="keywords" type="text" autocomplete="off" placeholder="genre, role, tone" />
+            </label>
+
+            <label>
+              Thumbnail URL
+              <input id="characterThumbnail" name="thumbnail" type="url" autocomplete="off" placeholder="Optional image URL" />
+            </label>
+
+            <label>
+              Opening Message
+              <textarea id="characterOpening" name="opening" rows="4" placeholder="Optional first message from the character"></textarea>
+            </label>
+
+            <div class="gate-row">
+              <span>ADULT_CONTENT_ALLOWED</span>
+              <strong id="adultGateValue">false</strong>
+            </div>
+          </form>
+        </section>
+      </aside>
+
+      <main class="stage" aria-label="Roleplay chat">
+        <header class="stage-header">
+          <div class="scene-title">
+            <span class="eyebrow">Now roleplaying</span>
+            <h2 id="activeCharacterName">New Persona</h2>
+          </div>
+
+          <div class="stage-actions">
+            <button id="downloadChatButton" class="icon-button" type="button" title="Download chat" aria-label="Download chat">
+              ↓
+            </button>
+            <button id="clearChatButton" class="icon-button danger" type="button" title="Clear chat" aria-label="Clear chat">
+              ×
+            </button>
+          </div>
+        </header>
+
+        <section id="chatLog" class="chat-log" aria-live="polite"></section>
+
+        <form id="composerForm" class="composer">
+          <label class="sr-only" for="messageInput">Message</label>
+          <textarea
+            id="messageInput"
+            name="message"
+            rows="3"
+            placeholder="Enter your next move..."
+            autocomplete="off"
+          ></textarea>
+          <div class="composer-actions">
+            <button id="stopButton" class="text-button secondary" type="button" disabled>Stop</button>
+            <button id="sendButton" class="text-button primary" type="submit">Send</button>
+          </div>
+        </form>
+      </main>
+
+      <aside class="control-panel" aria-label="Model and generation settings">
+        <section aria-labelledby="model-title">
+          <h2 id="model-title">Model</h2>
+          <label>
+            Runtime
+            <select id="modelSelect"></select>
+          </label>
+
+          <label>
+            Cache
+            <select id="cacheSelect">
+              <option value="cache">Cache API</option>
+              <option value="indexeddb">IndexedDB</option>
+              <option value="opfs">OPFS</option>
+            </select>
+          </label>
+
+          <button id="loadModelButton" class="text-button primary full" type="button">Load Model</button>
+          <div id="modelStatus" class="model-status" role="status">Waiting for a model.</div>
+          <progress id="loadProgress" value="0" max="1"></progress>
+        </section>
+
+        <section class="age-gate" aria-labelledby="nsfw-title">
+          <h2 id="nsfw-title">NSFW Gate</h2>
+          <div class="setting-row">
+            <div>
+              <strong>NSFW Mode</strong>
+              <span id="nsfwModeLabel">Locked</span>
+            </div>
+            <button id="nsfwToggleButton" class="text-button secondary" type="button">Enable</button>
+          </div>
+
+          <div id="ageGateStatus" class="model-status" role="status">
+            Requires local MobileAgeNet age estimate of 25 or older.
+          </div>
+
+          <video id="ageVideo" class="age-video" playsinline muted hidden></video>
+          <canvas id="ageCanvas" class="age-canvas" width="224" height="224" hidden></canvas>
+
+          <div class="age-actions">
+            <button id="startAgeCheckButton" class="text-button secondary" type="button">Camera</button>
+            <button id="captureAgeButton" class="text-button primary" type="button" disabled>Verify</button>
+            <button id="resetAgeGateButton" class="text-button subtle" type="button">Reset</button>
+          </div>
+        </section>
+
+        <section aria-labelledby="settings-title">
+          <h2 id="settings-title">Generation</h2>
+          <label>
+            Temperature
+            <input id="temperatureInput" type="range" min="0.1" max="1.4" step="0.1" value="0.8" />
+            <output id="temperatureValue">0.8</output>
+          </label>
+
+          <label>
+            Top P
+            <input id="topPInput" type="range" min="0.1" max="1" step="0.05" value="0.9" />
+            <output id="topPValue">0.9</output>
+          </label>
+
+          <label>
+            Max Tokens
+            <input id="maxTokensInput" type="number" min="64" max="2048" step="64" value="512" />
+          </label>
+        </section>
+
+        <section aria-labelledby="prompt-title">
+          <div class="section-heading">
+            <h2 id="prompt-title">Prompt</h2>
+            <button id="copyPromptButton" class="text-button subtle" type="button">Copy</button>
+          </div>
+          <pre id="promptPreview" class="prompt-preview"></pre>
+        </section>
+      </aside>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
