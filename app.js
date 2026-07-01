@@ -740,71 +740,108 @@ function expectedShardName(model, shardNumber) {
   return `${model.shardPrefix}-${String(shardNumber).padStart(5, "0")}-of-${String(model.shards).padStart(5, "0")}.gguf`;
 }
 
+function shardInfoFromName(fileName) {
+  const match = fileName.match(/^(.+)-(\d{5})-of-(\d{5})\.gguf$/i);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    prefix: match[1],
+    shardNumber: Number(match[2]),
+    shardTotal: Number(match[3]),
+  };
+}
+
 function shardNumberFromName(fileName) {
-  const match = fileName.match(/-(\d{5})-of-(\d{5})\.gguf$/i);
-  return match ? Number(match[1]) : null;
+  return shardInfoFromName(fileName)?.shardNumber ?? null;
 }
 
 function isExpectedModelShard(file, model) {
-  return isGgufFile(file) && file.name.startsWith(`${model.shardPrefix}-`);
+  const info = file ? shardInfoFromName(file.name) : null;
+  return isGgufFile(file)
+    && info?.prefix === model.shardPrefix
+    && info.shardTotal === model.shards
+    && info.shardNumber >= 1
+    && info.shardNumber <= model.shards;
 }
 
 function isGgufFile(file) {
   return file?.name?.toLowerCase().endsWith(".gguf");
 }
 
-function selectedModelFiles(model) {
-  const perShardFiles = elements.modelShardInputs.map((input) => input.files?.[0] ?? null);
-  const hasPerShardSelection = perShardFiles.some(Boolean);
+function allSelectedGgufFiles() {
+  return [
+    ...elements.modelShardInputs.map((input) => input.files?.[0]).filter(isGgufFile),
+    ...Array.from(elements.modelFilesInput.files ?? []).filter(isGgufFile),
+  ];
+}
 
-  if (hasPerShardSelection) {
-    return perShardFiles.filter((file) => isExpectedModelShard(file, model));
+function groupedSelectedShards(model) {
+  const groups = new Map();
+
+  allSelectedGgufFiles().forEach((file) => {
+    const info = shardInfoFromName(file.name);
+    if (!info || info.shardNumber < 1 || info.shardNumber > info.shardTotal) {
+      return;
+    }
+
+    const key = `${info.prefix}|${info.shardTotal}`;
+    const group = groups.get(key) ?? {
+      prefix: info.prefix,
+      shardTotal: info.shardTotal,
+      filesByShard: new Map(),
+    };
+
+    if (!group.filesByShard.has(info.shardNumber)) {
+      group.filesByShard.set(info.shardNumber, file);
+    }
+
+    groups.set(key, group);
+  });
+
+  const matchingModelGroup = groups.get(`${model.shardPrefix}|${model.shards}`);
+  if (matchingModelGroup) {
+    return matchingModelGroup;
   }
 
-  const filesByShard = new Map();
-  Array.from(elements.modelFilesInput.files ?? [])
-    .filter((file) => isExpectedModelShard(file, model))
-    .forEach((file) => {
-      const shardNumber = shardNumberFromName(file.name);
-      if (shardNumber && shardNumber >= 1 && shardNumber <= model.shards && !filesByShard.has(shardNumber)) {
-        filesByShard.set(shardNumber, file);
-      }
-    });
+  return Array.from(groups.values()).find((group) => group.shardTotal === model.shards && group.filesByShard.size === model.shards)
+    ?? null;
+}
 
-  return Array.from({ length: model.shards }, (_, index) => filesByShard.get(index + 1)).filter(Boolean);
+function selectedModelFiles(model) {
+  const group = groupedSelectedShards(model);
+  if (!group) {
+    return [];
+  }
+
+  return Array.from({ length: group.shardTotal }, (_, index) => group.filesByShard.get(index + 1)).filter(Boolean);
 }
 
 function selectedModelMissingShards(model) {
-  const perShardFiles = elements.modelShardInputs.map((input) => input.files?.[0] ?? null);
-  const hasPerShardSelection = perShardFiles.some(Boolean);
+  const group = groupedSelectedShards(model);
 
-  if (hasPerShardSelection) {
-    return perShardFiles
-      .map((file, index) => (isExpectedModelShard(file, model) ? null : expectedShardName(model, index + 1)))
-      .filter(Boolean);
+  if (!group) {
+    return Array.from({ length: model.shards }, (_, index) => expectedShardName(model, index + 1));
   }
 
-  const selectedShardNumbers = new Set(
-    Array.from(elements.modelFilesInput.files ?? [])
-      .filter((file) => isExpectedModelShard(file, model))
-      .map((file) => shardNumberFromName(file.name))
-      .filter((number) => number && number >= 1 && number <= model.shards),
-  );
-
-  return Array.from({ length: model.shards }, (_, index) => expectedShardName(model, index + 1))
-    .filter((_, index) => !selectedShardNumbers.has(index + 1));
+  return Array.from({ length: group.shardTotal }, (_, index) => `${group.prefix}-${String(index + 1).padStart(5, "0")}-of-${String(group.shardTotal).padStart(5, "0")}.gguf`)
+    .filter((_, index) => !group.filesByShard.has(index + 1));
 }
 
 function updateShardFileNames() {
   const model = selectedModelConfig();
+  const selectedGroup = groupedSelectedShards(model);
+
   elements.modelShardInputs.forEach((input, index) => {
-    const file = input.files?.[0];
+    const selectedShardNumber = index + 1;
+    const file = input.files?.[0] ?? selectedGroup?.filesByShard.get(selectedShardNumber);
     const label = elements.modelShardNames[index];
     if (!label) {
       return;
     }
 
-    label.textContent = file ? file.name : `Needs ${expectedShardName(model, index + 1)}`;
+    label.textContent = file ? file.name : `Needs ${expectedShardName(model, selectedShardNumber)}`;
   });
 }
 
@@ -817,7 +854,11 @@ function describeSelectedModelFiles() {
   appendModelDebug("Shard selection changed", { selected: files.length, missing: missingShards.length });
 
   if (!files.length) {
-    setStatus(`No local ${model.label} files selected yet. Click Download GGUF Files, then choose shards 1-${model.shards}.`);
+    const selectedGgufCount = allSelectedGgufFiles().length;
+    const statusPrefix = selectedGgufCount
+      ? `${selectedGgufCount} GGUF file${selectedGgufCount === 1 ? "" : "s"} selected, but no complete ${model.label} shard set was found.`
+      : `No local ${model.label} files selected yet.`;
+    setStatus(`${statusPrefix} Click Download GGUF Files, then choose shards 1-${model.shards}.`);
     return;
   }
 
