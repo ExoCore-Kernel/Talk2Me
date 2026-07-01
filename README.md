@@ -84,7 +84,7 @@ GitHub release assets do not reliably allow browser JavaScript `fetch()` from ev
 2. In the **Model** card, choose **RoLLM-Pro** or **RoLLM-Pro-adult** from the Runtime dropdown.
 3. Click **Download GGUF Files**. Talk2Me opens direct browser downloads for all five `.gguf` shards. If your browser asks, allow multiple downloads.
 4. After the downloads finish, click **Choose downloaded shards** and select all five `.gguf` files for the same model.
-5. Click **Load Selected Files** and wait until the status says the selected model is ready. Keep the tab open while loading because the shards are large.
+5. Click **Load Selected Files** and wait until the status says the selected model is ready. Keep the tab open while loading because the shards are large. On typical desktops this can take several minutes, and slower CPUs, mobile browsers, or low-memory devices can take longer. The status line shows elapsed time while Wllama parses and initializes the five GGUF shards.
 
 If you want to download the files manually, open the release page and download every shard for the model you want:
 
