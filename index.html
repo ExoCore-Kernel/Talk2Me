@@ -188,15 +188,46 @@
 
           <div class="model-actions">
             <button id="downloadModelButton" class="text-button secondary full" type="button">Download GGUF Files</button>
-            <label class="file-picker">
-              Choose downloaded shards
-              <input id="modelFilesInput" type="file" accept=".gguf" multiple />
-            </label>
-            <button id="loadModelButton" class="text-button primary full" type="button">Load Selected Files</button>
+            <div class="shard-picker-grid" aria-label="Choose the five downloaded GGUF shards">
+              <label class="file-picker shard-picker">
+                Choose shard 1
+                <input id="modelShardInput1" class="model-shard-input" type="file" accept=".gguf" data-shard-index="1" />
+                <span id="modelShardName1" class="shard-file-name">No file selected</span>
+              </label>
+              <label class="file-picker shard-picker">
+                Choose shard 2
+                <input id="modelShardInput2" class="model-shard-input" type="file" accept=".gguf" data-shard-index="2" />
+                <span id="modelShardName2" class="shard-file-name">No file selected</span>
+              </label>
+              <label class="file-picker shard-picker">
+                Choose shard 3
+                <input id="modelShardInput3" class="model-shard-input" type="file" accept=".gguf" data-shard-index="3" />
+                <span id="modelShardName3" class="shard-file-name">No file selected</span>
+              </label>
+              <label class="file-picker shard-picker">
+                Choose shard 4
+                <input id="modelShardInput4" class="model-shard-input" type="file" accept=".gguf" data-shard-index="4" />
+                <span id="modelShardName4" class="shard-file-name">No file selected</span>
+              </label>
+              <label class="file-picker shard-picker">
+                Choose shard 5
+                <input id="modelShardInput5" class="model-shard-input" type="file" accept=".gguf" data-shard-index="5" />
+                <span id="modelShardName5" class="shard-file-name">No file selected</span>
+              </label>
+              <label class="file-picker legacy-picker">
+                Or choose all shards at once
+                <input id="modelFilesInput" type="file" accept=".gguf" multiple />
+              </label>
+            </div>
+            <button id="loadModelButton" class="text-button primary full" type="button">Load 5 Selected Shards</button>
           </div>
           <div id="modelDownloadLinks" class="model-download-links" aria-live="polite"></div>
-          <div id="modelStatus" class="status-box" role="status">Download all five GGUF files, choose them here, then load.</div>
+          <div id="modelStatus" class="status-box" role="status">Download all five GGUF files, choose shards 1-5, then load.</div>
           <progress id="loadProgress" value="0" max="1"></progress>
+          <details class="model-debug" open>
+            <summary>Model debug logs</summary>
+            <pre id="modelDebugLog" aria-live="polite">Waiting for shard selection...</pre>
+          </details>
         </section>
 
         <section class="studio-card debug-card" aria-labelledby="adult-title">
@@ -282,6 +313,6 @@
       </section>
     </div>
 
-    <script type="module" src="./app.js?v=simple-gguf-debug-v1"></script>
+    <script type="module" src="./app.js?v=five-shard-debug-v2"></script>
   </body>
 </html>
