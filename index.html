@@ -6,13 +6,13 @@
     <title>Talk2Me</title>
     <meta
       name="description"
-      content="A local WebLLM roleplaying site for character cards and private browser-based chat."
+      content="A local GGUF roleplaying site for character cards and private browser-based chat."
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <noscript>
-      <div class="noscript">Talk2Me needs JavaScript enabled to run WebLLM in your browser.</div>
+      <div class="noscript">Talk2Me needs JavaScript enabled to run local GGUF models in your browser.</div>
     </noscript>
 
     <div class="app-shell">
@@ -186,42 +186,18 @@
             <select id="modelSelect"></select>
           </label>
 
-          <label>
-            Cache
-            <select id="cacheSelect">
-              <option value="cache">Cache API</option>
-              <option value="indexeddb">IndexedDB</option>
-              <option value="opfs">OPFS</option>
-            </select>
-          </label>
-
           <button id="loadModelButton" class="text-button primary full" type="button">Load Model</button>
           <div id="modelStatus" class="status-box" role="status">Waiting for a model.</div>
           <progress id="loadProgress" value="0" max="1"></progress>
         </section>
 
-        <section class="studio-card age-gate" aria-labelledby="nsfw-title">
-          <h2 id="nsfw-title">NSFW Gate</h2>
-          <div class="setting-row">
-            <div>
-              <strong>NSFW Mode</strong>
-              <span id="nsfwModeLabel">Locked</span>
-            </div>
-            <button id="nsfwToggleButton" class="text-button secondary" type="button">Verify</button>
-          </div>
-
-          <div id="ageGateStatus" class="status-box" role="status">
-            Requires local MobileAgeNet age estimate of 25 or older.
-          </div>
-
-          <video id="ageVideo" class="age-video" playsinline muted hidden></video>
-          <canvas id="ageCanvas" class="age-canvas" width="224" height="224" hidden></canvas>
-
-          <div class="age-actions">
-            <button id="startAgeCheckButton" class="text-button secondary" type="button">Camera</button>
-            <button id="captureAgeButton" class="text-button primary" type="button" disabled>Verify</button>
-            <button id="resetAgeGateButton" class="text-button subtle" type="button">Reset</button>
-          </div>
+        <section class="studio-card debug-card" aria-labelledby="adult-title">
+          <h2 id="adult-title">Adult Debug</h2>
+          <label class="check-row">
+            <input id="adultCheck" type="checkbox" />
+            <span>Enable adult mode for debugging</span>
+          </label>
+          <div id="adultStatus" class="status-box" role="status">Adult checkbox is off.</div>
         </section>
 
         <section class="studio-card compact-card" aria-labelledby="settings-title">
@@ -248,7 +224,7 @@
           <a href="#persona-title" aria-current="page">Studio</a>
           <a href="#repositories-title">Repos</a>
           <a href="#model-title">Model</a>
-          <a href="#nsfw-title">NSFW</a>
+          <a href="#adult-title">Adult</a>
           <a href="#settings-title">Gen</a>
         </nav>
       </aside>
@@ -298,6 +274,6 @@
       </section>
     </div>
 
-    <script type="module" src="./app.js?v=dark-studio-ui-v1"></script>
+    <script type="module" src="./app.js?v=simple-gguf-debug-v1"></script>
   </body>
 </html>

@@ -30,10 +30,8 @@ SAFETY RULES
 - Keep refusals brief.
 - Offer safe alternatives such as fictional scenes, cybersecurity defense, worldbuilding, or non-actionable explanation.
 
-ADULT CONTENT GATE
-- If ADULT_CONTENT_ALLOWED=false, refuse adult/NSFW roleplay.
-- If ADULT_CONTENT_ALLOWED=false, offer non-explicit romance, drama, friendship, adventure, or normal roleplay instead.
-- Do not produce adult/NSFW content unless the system prompt explicitly says ADULT_CONTENT_ALLOWED=true.
+ADULT CONTENT
+- Follow the user's local adult-content checkbox state from ADULT_CONTENT_ALLOWED.
 - Never include minors in sexual or romantic-adult contexts.
 
 STYLE
@@ -42,37 +40,30 @@ STYLE
 - Do not over-explain policies.
 - For roleplay, use immersive character dialogue and actions.`;
 
+const ROLLM_RELEASE_BASE = "https://github.com/ExoCore-Kernel/RoLLM1-models/releases/download/v0.2-beta";
+const WLLAMA_VERSION = "3.5.1";
+const WLLAMA_MODULE_URL = `https://cdn.jsdelivr.net/npm/@wllama/wllama@${WLLAMA_VERSION}/esm/index.js`;
+const WLLAMA_WASM_CDN_URL = `https://cdn.jsdelivr.net/npm/@wllama/wllama@${WLLAMA_VERSION}/esm/wasm-from-cdn.js`;
+
 const MODEL_OPTIONS = [
   {
-    label: "RoLLM1 Mini",
-    model_id: "RoLLM1-mini",
-    model: "./models/RoLLM1-mini/",
-    model_lib: "./models/RoLLM1-mini/RoLLM1-mini.wasm",
+    label: "RoLLM-Pro",
+    model_id: "RoLLM1-pro",
+    firstShard: `${ROLLM_RELEASE_BASE}/RoLLM1-pro-Q4_K_M-00001-of-00005.gguf`,
+    shardPrefix: "RoLLM1-pro-Q4_K_M",
+    shards: 5,
   },
   {
-    label: "RoLLM1 Pro",
-    model_id: "RoLLM1-pro",
-    model: "./models/RoLLM1-pro/",
-    model_lib: "./models/RoLLM1-pro/RoLLM1-pro.wasm",
+    label: "RoLLM-Pro-adult",
+    model_id: "RoLLM1-pro-adult",
+    firstShard: `${ROLLM_RELEASE_BASE}/RoLLM1-pro-adult-Q4_K_M-00001-of-00005.gguf`,
+    shardPrefix: "RoLLM1-pro-adult-Q4_K_M",
+    shards: 5,
   },
 ];
 
-const AGE_GATE_MINIMUM = 25;
-const MOBILEAGENET_INPUT_SIZE = 224;
-const MOBILEAGENET_MAX_AGE = 116;
-const MOBILEAGENET_MODEL_URL = "./assets/mobileagenet/mobileagenet.onnx";
-const MOBILEAGENET_EXTERNAL_DATA_FILES = ["MobileAgeNet.onnx.data", "mobileagenet.onnx.data"];
-const ONNX_RUNTIME_VERSION = "1.22.0";
-const ONNX_RUNTIME_URL = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ONNX_RUNTIME_VERSION}/dist/ort.min.js`;
-const ONNX_RUNTIME_WASM_PATH = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ONNX_RUNTIME_VERSION}/dist/`;
-const AGE_GATE_DEFAULT = {
-  verified: false,
-  nsfwEnabled: false,
-  estimatedAge: null,
-  checkedAt: null,
-  threshold: AGE_GATE_MINIMUM,
-  lastError: "",
-  lastMessage: "",
+const ADULT_CHECK_DEFAULT = {
+  checked: false,
 };
 const PROFILE_DEFAULT = {
   name: "",
@@ -101,19 +92,16 @@ const STORAGE_KEYS = {
   characters: "talk2me.characters.v1",
   chats: "talk2me.chats.v1",
   activeCharacterId: "talk2me.activeCharacterId.v1",
-  ageGate: "talk2me.ageGate.v1",
+  adultCheck: "talk2me.adultCheck.v1",
   profile: "talk2me.profile.v1",
 };
 
 const elements = {
   activeCharacterAvatar: document.querySelector("#activeCharacterAvatar"),
   activeCharacterName: document.querySelector("#activeCharacterName"),
-  ageCanvas: document.querySelector("#ageCanvas"),
-  ageGateStatus: document.querySelector("#ageGateStatus"),
-  ageVideo: document.querySelector("#ageVideo"),
+  adultCheck: document.querySelector("#adultCheck"),
+  adultStatus: document.querySelector("#adultStatus"),
   backButton: document.querySelector("#backButton"),
-  cacheSelect: document.querySelector("#cacheSelect"),
-  captureAgeButton: document.querySelector("#captureAgeButton"),
   characterDescription: document.querySelector("#characterDescription"),
   characterKeywords: document.querySelector("#characterKeywords"),
   characterList: document.querySelector("#characterList"),
@@ -135,8 +123,6 @@ const elements = {
   modelStatus: document.querySelector("#modelStatus"),
   moreButton: document.querySelector("#moreButton"),
   newCharacterButton: document.querySelector("#newCharacterButton"),
-  nsfwModeLabel: document.querySelector("#nsfwModeLabel"),
-  nsfwToggleButton: document.querySelector("#nsfwToggleButton"),
   personaForm: document.querySelector("#personaForm"),
   profileAbout: document.querySelector("#profileAbout"),
   profileBoundaries: document.querySelector("#profileBoundaries"),
@@ -152,11 +138,9 @@ const elements = {
   repositoryMeta: document.querySelector("#repositoryMeta"),
   repositoryStatus: document.querySelector("#repositoryStatus"),
   repositoryUrl: document.querySelector("#repositoryUrl"),
-  resetAgeGateButton: document.querySelector("#resetAgeGateButton"),
   resetCharacterButton: document.querySelector("#resetCharacterButton"),
   searchButton: document.querySelector("#searchButton"),
   sendButton: document.querySelector("#sendButton"),
-  startAgeCheckButton: document.querySelector("#startAgeCheckButton"),
   stopButton: document.querySelector("#stopButton"),
   temperatureInput: document.querySelector("#temperatureInput"),
   temperatureValue: document.querySelector("#temperatureValue"),
@@ -165,16 +149,13 @@ const elements = {
 };
 
 let engine = null;
-let worker = null;
 let isGenerating = false;
-let webllmModulePromise = null;
-let ageStream = null;
-let onnxRuntimePromise = null;
-let mobileAgeNetSessionPromise = null;
+let wllamaModulePromise = null;
+let wllamaWasmConfigPromise = null;
 
 const state = {
   activeCharacterId: readJson(STORAGE_KEYS.activeCharacterId, DEFAULT_CHARACTERS[0].id),
-  ageGate: readJson(STORAGE_KEYS.ageGate, AGE_GATE_DEFAULT),
+  adultCheck: readJson(STORAGE_KEYS.adultCheck, ADULT_CHECK_DEFAULT),
   characters: readJson(STORAGE_KEYS.characters, DEFAULT_CHARACTERS),
   chats: readJson(STORAGE_KEYS.chats, {}),
   profile: readJson(STORAGE_KEYS.profile, PROFILE_DEFAULT),
@@ -186,14 +167,13 @@ if (!Array.isArray(state.characters) || state.characters.length === 0) {
   state.activeCharacterId = DEFAULT_CHARACTERS[0].id;
 }
 
-if (!state.ageGate || typeof state.ageGate !== "object") {
-  state.ageGate = structuredClone(AGE_GATE_DEFAULT);
+if (!state.adultCheck || typeof state.adultCheck !== "object") {
+  state.adultCheck = structuredClone(ADULT_CHECK_DEFAULT);
 }
 
-state.ageGate = {
-  ...AGE_GATE_DEFAULT,
-  ...state.ageGate,
-  threshold: AGE_GATE_MINIMUM,
+state.adultCheck = {
+  ...ADULT_CHECK_DEFAULT,
+  ...state.adultCheck,
 };
 
 state.profile = {
@@ -232,16 +212,25 @@ function saveAll() {
   writeJson(STORAGE_KEYS.characters, state.characters);
   writeJson(STORAGE_KEYS.chats, state.chats);
   writeJson(STORAGE_KEYS.activeCharacterId, state.activeCharacterId);
-  writeJson(STORAGE_KEYS.ageGate, state.ageGate);
+  writeJson(STORAGE_KEYS.adultCheck, state.adultCheck);
   writeJson(STORAGE_KEYS.profile, state.profile);
 }
 
-function isAgeVerified() {
-  return state.ageGate.verified === true && Number(state.ageGate.estimatedAge) >= AGE_GATE_MINIMUM;
+function adultContentAllowed() {
+  return state.adultCheck.checked === true;
 }
 
-function adultContentAllowed() {
-  return state.ageGate.nsfwEnabled === true && isAgeVerified();
+function renderAdultCheck() {
+  elements.adultCheck.checked = adultContentAllowed();
+  elements.adultStatus.textContent = adultContentAllowed()
+    ? "Adult checkbox is on for debugging. No camera gate is used."
+    : "Adult checkbox is off. Toggle it if you need to debug adult mode.";
+}
+
+function setAdultCheck() {
+  state.adultCheck.checked = elements.adultCheck.checked;
+  saveAll();
+  renderAdultCheck();
 }
 
 function buildPersonaPrompt(character) {
@@ -302,464 +291,14 @@ function setStatus(text, progress = elements.loadProgress.value) {
   elements.loadProgress.value = Number(progress) || 0;
 }
 
-function loadWebLLMModule() {
-  webllmModulePromise ??= import("https://esm.run/@mlc-ai/web-llm");
-  return webllmModulePromise;
+function loadWllamaModule() {
+  wllamaModulePromise ??= import(WLLAMA_MODULE_URL);
+  return wllamaModulePromise;
 }
 
-function loadONNXRuntime() {
-  if (window.ort) {
-    configureONNXRuntime(window.ort);
-    return Promise.resolve(window.ort);
-  }
-
-  onnxRuntimePromise ??= new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = ONNX_RUNTIME_URL;
-    script.async = true;
-    script.onload = () => {
-      if (!window.ort) {
-        reject(new Error("ONNX Runtime did not initialize."));
-        return;
-      }
-      configureONNXRuntime(window.ort);
-      resolve(window.ort);
-    };
-    script.onerror = () => reject(new Error("Could not load ONNX Runtime Web."));
-    document.head.append(script);
-  });
-
-  return onnxRuntimePromise;
-}
-
-function configureONNXRuntime(ort) {
-  ort.env.wasm.wasmPaths = ONNX_RUNTIME_WASM_PATH;
-  ort.env.wasm.proxy = false;
-  ort.env.wasm.numThreads = 1;
-}
-
-function mobileAgeNetAssetUrl(fileName) {
-  const baseUrl = MOBILEAGENET_MODEL_URL.slice(0, MOBILEAGENET_MODEL_URL.lastIndexOf("/") + 1);
-  return `${baseUrl}${encodeURIComponent(fileName)}`;
-}
-
-function externalDataNamesFromModel(modelBuffer) {
-  const modelText = new TextDecoder("latin1").decode(modelBuffer);
-  const matches = modelText.match(/[A-Za-z0-9_.-]+\.onnx\.data/g) ?? [];
-  return [...new Set([...matches, ...MOBILEAGENET_EXTERNAL_DATA_FILES])];
-}
-
-async function loadMobileAgeNetExternalData(modelBuffer) {
-  const externalDataNames = externalDataNamesFromModel(modelBuffer);
-  const loadErrors = [];
-
-  for (const fileName of externalDataNames) {
-    try {
-      const response = await fetch(mobileAgeNetAssetUrl(fileName), { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-      }
-
-      return {
-        data: await response.arrayBuffer(),
-        path: fileName,
-        url: mobileAgeNetAssetUrl(fileName),
-      };
-    } catch (error) {
-      loadErrors.push(`${fileName}: ${error.message}`);
-    }
-  }
-
-  if (externalDataNames.length > 0) {
-    throw new Error(
-      `MobileAgeNet needs its external weights file next to mobileagenet.onnx. Upload MobileAgeNet.onnx.data to assets/mobileagenet/. Tried ${loadErrors.join("; ")}`,
-    );
-  }
-
-  return null;
-}
-
-function mobileAgeNetSessionOptions(externalData, dataMode = "bytes") {
-  const options = {
-    executionProviders: ["wasm"],
-  };
-
-  if (externalData) {
-    options.externalData = [
-      {
-        data: dataMode === "url" ? externalData.url : new Uint8Array(externalData.data.slice(0)),
-        path: externalData.path,
-      },
-    ];
-  }
-
-  return options;
-}
-
-async function createMobileAgeNetSession(ort, modelBuffer, externalData) {
-  const modelBytes = new Uint8Array(modelBuffer);
-  const attempts = [
-    {
-      label: "external bytes",
-      model: modelBytes.slice(0),
-      options: mobileAgeNetSessionOptions(externalData, "bytes"),
-    },
-    {
-      label: "external url",
-      model: modelBytes.slice(0),
-      options: mobileAgeNetSessionOptions(externalData, "url"),
-    },
-    {
-      label: "plain model",
-      model: modelBytes.slice(0),
-      options: mobileAgeNetSessionOptions(null),
-    },
-  ];
-  const errors = [];
-
-  for (const attempt of attempts) {
-    try {
-      return await ort.InferenceSession.create(attempt.model, attempt.options);
-    } catch (error) {
-      errors.push(`${attempt.label}: ${error.message}`);
-    }
-  }
-
-  const mountedFilesFailure = errors.some((message) => message.includes("MountedFiles"));
-  if (mountedFilesFailure && externalData) {
-    throw new Error(
-      `MobileAgeNet found ${externalData.path}, but ONNX Runtime could not mount the external weights. Hard refresh this page, then try again. Details: ${errors.join(" | ")}`,
-    );
-  }
-
-  throw new Error(errors.join(" | "));
-}
-
-async function loadMobileAgeNetSession() {
-  const ort = await loadONNXRuntime();
-
-  mobileAgeNetSessionPromise ??= (async () => {
-    const response = await fetch(MOBILEAGENET_MODEL_URL, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(
-        `MobileAgeNet model missing at ${MOBILEAGENET_MODEL_URL}. Upload the real age-estimation ONNX file with exactly that name.`,
-      );
-    }
-
-    const modelBuffer = await response.arrayBuffer();
-    const externalData = await loadMobileAgeNetExternalData(modelBuffer);
-    const session = await createMobileAgeNetSession(ort, modelBuffer, externalData);
-
-    return {
-      modelUrl: MOBILEAGENET_MODEL_URL,
-      session,
-    };
-  })();
-
-  const loaded = await mobileAgeNetSessionPromise;
-
-  return {
-    ort,
-    ...loaded,
-  };
-}
-
-async function startAgeCheck() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    state.ageGate.lastError = "Camera access is not available in this browser.";
-    saveAll();
-    renderAgeGate();
-    return;
-  }
-
-  stopAgeCamera();
-  elements.ageGateStatus.textContent = "Starting local camera check...";
-
-  try {
-    ageStream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        facingMode: "user",
-        width: { ideal: 640 },
-        height: { ideal: 640 },
-      },
-    });
-    elements.ageVideo.srcObject = ageStream;
-    elements.ageVideo.hidden = false;
-    elements.ageCanvas.hidden = true;
-    await elements.ageVideo.play();
-    elements.captureAgeButton.disabled = false;
-    elements.ageGateStatus.textContent = "Camera ready. Center your face, then verify.";
-  } catch (error) {
-    console.error(error);
-    state.ageGate.lastError = "Camera permission was denied or unavailable.";
-    saveAll();
-    renderAgeGate();
-  }
-}
-
-function stopAgeCamera() {
-  if (ageStream) {
-    for (const track of ageStream.getTracks()) {
-      track.stop();
-    }
-  }
-  ageStream = null;
-  elements.ageVideo.srcObject = null;
-  elements.ageVideo.hidden = true;
-  elements.captureAgeButton.disabled = true;
-}
-
-function setAgeGateMessage(message) {
-  state.ageGate.lastMessage = message;
-  elements.ageGateStatus.textContent = message;
-}
-
-function drawAgeFrame() {
-  const video = elements.ageVideo;
-  if (!video.videoWidth || !video.videoHeight) {
-    throw new Error("Camera frame is not ready.");
-  }
-
-  const canvas = elements.ageCanvas;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  const sourceSize = Math.min(video.videoWidth, video.videoHeight);
-  const sourceX = Math.floor((video.videoWidth - sourceSize) / 2);
-  const sourceY = Math.floor((video.videoHeight - sourceSize) / 2);
-
-  canvas.width = MOBILEAGENET_INPUT_SIZE;
-  canvas.height = MOBILEAGENET_INPUT_SIZE;
-  context.drawImage(
-    video,
-    sourceX,
-    sourceY,
-    sourceSize,
-    sourceSize,
-    0,
-    0,
-    MOBILEAGENET_INPUT_SIZE,
-    MOBILEAGENET_INPUT_SIZE,
-  );
-
-  canvas.hidden = false;
-  video.hidden = true;
-  return canvas;
-}
-
-function metadataShape(metadata) {
-  return metadata?.dimensions ?? metadata?.dims ?? metadata?.shape ?? null;
-}
-
-function inputSpecForSession(session, inputName) {
-  const metadata = session.inputMetadata?.[inputName];
-  const shape = metadataShape(metadata);
-  if (!Array.isArray(shape) || shape.length !== 4) {
-    return {
-      channelsFirst: true,
-      channels: 3,
-      height: MOBILEAGENET_INPUT_SIZE,
-      width: MOBILEAGENET_INPUT_SIZE,
-      shape: [1, 3, MOBILEAGENET_INPUT_SIZE, MOBILEAGENET_INPUT_SIZE],
-    };
-  }
-
-  const dims = shape.map((value, index) => {
-    const numberValue = Number(value);
-    if (Number.isFinite(numberValue) && numberValue > 0) {
-      return numberValue;
-    }
-    return index === 0 ? 1 : null;
-  });
-
-  const channelsFirst = dims[1] === 3 || dims[1] === 1;
-  const channelsLast = dims[3] === 3 || dims[3] === 1;
-  const channels = channelsFirst ? dims[1] : channelsLast ? dims[3] : 3;
-  const height = channelsFirst ? dims[2] : dims[1];
-  const width = channelsFirst ? dims[3] : dims[2];
-
-  return {
-    channelsFirst: channelsFirst || !channelsLast,
-    channels,
-    height: height || MOBILEAGENET_INPUT_SIZE,
-    width: width || MOBILEAGENET_INPUT_SIZE,
-    shape: [
-      dims[0] || 1,
-      channelsFirst || !channelsLast ? channels : height || MOBILEAGENET_INPUT_SIZE,
-      channelsFirst || !channelsLast ? height || MOBILEAGENET_INPUT_SIZE : width || MOBILEAGENET_INPUT_SIZE,
-      channelsFirst || !channelsLast ? width || MOBILEAGENET_INPUT_SIZE : channels,
-    ],
-  };
-}
-
-function outputShapeForSession(session, outputName) {
-  return metadataShape(session.outputMetadata?.[outputName]) ?? [];
-}
-
-function resizeAgeCanvas(canvas, width, height) {
-  if (canvas.width === width && canvas.height === height) {
-    return canvas;
-  }
-
-  const resized = document.createElement("canvas");
-  resized.width = width;
-  resized.height = height;
-  resized.getContext("2d").drawImage(canvas, 0, 0, width, height);
-  return resized;
-}
-
-function preprocessAgeCanvas(canvas, spec) {
-  const source = resizeAgeCanvas(canvas, spec.width, spec.height);
-  const width = source.width;
-  const height = source.height;
-  const area = width * height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  const pixels = source.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, width, height).data;
-  const mean = [0.485, 0.456, 0.406];
-  const std = [0.229, 0.224, 0.225];
-  const channels = spec.channels === 1 ? 1 : 3;
-  const tensorData = new Float32Array(channels * area);
-
-  for (let index = 0; index < area; index += 1) {
-    const pixelOffset = index * 4;
-    const red = (pixels[pixelOffset] / 255 - mean[0]) / std[0];
-    const green = (pixels[pixelOffset + 1] / 255 - mean[1]) / std[1];
-    const blue = (pixels[pixelOffset + 2] / 255 - mean[2]) / std[2];
-    const gray = red * 0.299 + green * 0.587 + blue * 0.114;
-
-    if (spec.channelsFirst) {
-      tensorData[index] = channels === 1 ? gray : red;
-      if (channels > 1) {
-        tensorData[area + index] = green;
-        tensorData[area * 2 + index] = blue;
-      }
-    } else {
-      const offset = index * channels;
-      tensorData[offset] = channels === 1 ? gray : red;
-      if (channels > 1) {
-        tensorData[offset + 1] = green;
-        tensorData[offset + 2] = blue;
-      }
-    }
-  }
-
-  return tensorData;
-}
-
-function softmax(values) {
-  const max = Math.max(...values);
-  const exps = values.map((value) => Math.exp(value - max));
-  const sum = exps.reduce((total, value) => total + value, 0);
-  return exps.map((value) => value / sum);
-}
-
-function ageFromOutputTensor(tensor, modelUrl, inputName, outputName, outputShape) {
-  const values = Array.from(tensor.data ?? []);
-  if (values.length === 0) {
-    throw new Error("Age model returned an empty output.");
-  }
-
-  if (values.length === 1) {
-    const rawAge = Number(values[0]);
-    return rawAge >= 0 && rawAge <= 1 ? rawAge * MOBILEAGENET_MAX_AGE : rawAge;
-  }
-
-  if (values.length > MOBILEAGENET_MAX_AGE + 1) {
-    throw new Error(
-      `Loaded ONNX file does not look like MobileAgeNet. ${modelUrl} output "${outputName}" has ${values.length} values (${outputShape.join("x") || "unknown shape"}), so it looks like a generic classifier instead of an age estimator. Upload a MobileAgeNet age-estimation ONNX file as assets/mobileagenet/mobileagenet.onnx.`,
-    );
-  }
-
-  const looksLikeProbabilities =
-    values.every((value) => value >= 0 && value <= 1) &&
-    Math.abs(values.reduce((total, value) => total + value, 0) - 1) < 0.05;
-  const probabilities = looksLikeProbabilities ? values : softmax(values);
-  return probabilities.reduce((age, probability, index) => age + probability * index, 0);
-}
-
-async function estimateAge(canvas) {
-  const { ort, session, modelUrl } = await loadMobileAgeNetSession();
-  const inputName = session.inputNames[0];
-  const outputName = session.outputNames[0];
-  const inputSpec = inputSpecForSession(session, inputName);
-  const tensor = new ort.Tensor("float32", preprocessAgeCanvas(canvas, inputSpec), inputSpec.shape);
-  const output = await session.run({ [inputName]: tensor });
-  if (!output[outputName]) {
-    throw new Error(`Age model did not return expected output "${outputName}".`);
-  }
-  const scaledAge = ageFromOutputTensor(
-    output[outputName],
-    modelUrl,
-    inputName,
-    outputName,
-    outputShapeForSession(session, outputName),
-  );
-
-  if (!Number.isFinite(scaledAge)) {
-    throw new Error(`MobileAgeNet returned an invalid age estimate from input "${inputName}".`);
-  }
-
-  return Math.max(0, Math.min(MOBILEAGENET_MAX_AGE, scaledAge));
-}
-
-async function verifyAge() {
-  elements.captureAgeButton.disabled = true;
-  setAgeGateMessage("Running MobileAgeNet locally...");
-
-  try {
-    const canvas = drawAgeFrame();
-    const estimatedAge = await estimateAge(canvas);
-    const passed = estimatedAge >= AGE_GATE_MINIMUM;
-    const roundedAge = Math.round(estimatedAge * 10) / 10;
-
-    state.ageGate = {
-      verified: passed,
-      nsfwEnabled: passed,
-      estimatedAge: roundedAge,
-      checkedAt: new Date().toISOString(),
-      threshold: AGE_GATE_MINIMUM,
-      lastError: passed ? "" : `Locked. Local estimate ${roundedAge} is below required ${AGE_GATE_MINIMUM}.`,
-      lastMessage: passed
-        ? `Verified. Local estimate ${roundedAge}; NSFW mode enabled.`
-        : `Locked. Local estimate ${roundedAge}; required ${AGE_GATE_MINIMUM} or older.`,
-    };
-  } catch (error) {
-    console.error(error);
-    state.ageGate = {
-      ...AGE_GATE_DEFAULT,
-      lastError: `NSFW mode locked. ${error.message}`,
-      lastMessage: `NSFW mode locked. ${error.message}`,
-    };
-  } finally {
-    stopAgeCamera();
-    saveAll();
-    render();
-  }
-}
-
-async function toggleNsfwMode() {
-  if (adultContentAllowed()) {
-    state.ageGate.nsfwEnabled = false;
-    saveAll();
-    render();
-    return;
-  }
-
-  if (isAgeVerified()) {
-    state.ageGate.nsfwEnabled = true;
-    saveAll();
-    render();
-    return;
-  }
-
-  await startAgeCheck();
-}
-
-function resetAgeGate() {
-  stopAgeCamera();
-  mobileAgeNetSessionPromise = null;
-  state.ageGate = structuredClone(AGE_GATE_DEFAULT);
-  saveAll();
-  render();
+async function loadWllamaWasmConfig() {
+  wllamaWasmConfigPromise ??= import(WLLAMA_WASM_CDN_URL).then((module) => module.default);
+  return wllamaWasmConfigPromise;
 }
 
 function normalizeGithubRawUrl(url) {
@@ -1140,30 +679,6 @@ function renderSettings() {
   elements.topPValue.textContent = elements.topPInput.value;
 }
 
-function renderAgeGate() {
-  const verified = isAgeVerified();
-  const allowed = adultContentAllowed();
-  const estimate = Number(state.ageGate.estimatedAge);
-  const hasEstimate = Number.isFinite(estimate);
-
-  elements.nsfwModeLabel.textContent = allowed ? "Enabled" : verified ? "Verified, off" : "Locked";
-  elements.nsfwToggleButton.textContent = allowed ? "Disable" : verified ? "Enable" : "Verify";
-
-  if (state.ageGate.lastMessage) {
-    elements.ageGateStatus.textContent = state.ageGate.lastMessage;
-  } else if (state.ageGate.lastError) {
-    elements.ageGateStatus.textContent = state.ageGate.lastError;
-  } else if (allowed) {
-    elements.ageGateStatus.textContent = `NSFW mode enabled. Local estimate: ${estimate.toFixed(1)}. Threshold: ${AGE_GATE_MINIMUM}.`;
-  } else if (verified) {
-    elements.ageGateStatus.textContent = `Verified locally. Local estimate: ${estimate.toFixed(1)}. NSFW mode is off.`;
-  } else if (hasEstimate) {
-    elements.ageGateStatus.textContent = `Locked. Last local estimate: ${estimate.toFixed(1)}. Required: ${AGE_GATE_MINIMUM} or older.`;
-  } else {
-    elements.ageGateStatus.textContent = `Requires local MobileAgeNet age estimate of ${AGE_GATE_MINIMUM} or older. No image is stored.`;
-  }
-}
-
 function renderProfile() {
   elements.profileName.value = state.profile.name;
   elements.profilePronouns.value = state.profile.pronouns;
@@ -1179,49 +694,85 @@ function render() {
   renderPersonaForm();
   renderChat();
   renderSettings();
-  renderAgeGate();
+  renderAdultCheck();
   renderProfile();
 }
 
-async function loadModel() {
-  const selectedModel = elements.modelSelect.value;
+function selectedModelConfig() {
+  return MODEL_OPTIONS.find((model) => model.model_id === elements.modelSelect.value) ?? MODEL_OPTIONS[0];
+}
 
-  if (!("gpu" in navigator)) {
-    setStatus("WebGPU is not available in this browser. Use a recent Chromium-based browser over localhost or HTTPS.");
-    return;
+function shardUrls(model) {
+  return Array.from({ length: model.shards }, (_, index) => {
+    const shard = String(index + 1).padStart(5, "0");
+    return `${ROLLM_RELEASE_BASE}/${model.shardPrefix}-${shard}-of-00005.gguf`;
+  });
+}
+
+async function cacheModelShards(model) {
+  if (!("caches" in window)) {
+    throw new Error("This browser does not expose the Cache API needed for persistent shard storage.");
   }
 
+  const cache = await caches.open(`talk2me-gguf-${model.model_id}-v0.2-beta`);
+  const urls = shardUrls(model);
+  let completed = 0;
+
+  await Promise.all(
+    urls.map(async (url) => {
+      const cached = await cache.match(url);
+      if (!cached) {
+        const response = await fetch(url, { cache: "force-cache" });
+        if (!response.ok) {
+          throw new Error(`${url.split("/").pop()}: ${response.status} ${response.statusText}`);
+        }
+        await cache.put(url, response.clone());
+      }
+      completed += 1;
+      setStatus(`Cached ${completed}/${urls.length} GGUF shards for ${model.label}.`, completed / urls.length);
+    }),
+  );
+
+  return Promise.all(
+    urls.map(async (url) => {
+      const cached = await cache.match(url);
+      if (!cached) {
+        throw new Error(`${url.split("/").pop()} was not found in browser cache.`);
+      }
+      const blob = await cached.blob();
+      return new File([blob], url.split("/").pop(), { type: "application/octet-stream" });
+    }),
+  );
+}
+
+async function loadModel() {
+  const selectedModel = selectedModelConfig();
+
   elements.loadModelButton.disabled = true;
-  setStatus(`Loading ${selectedModel}...`, 0);
+  setStatus(`Caching ${selectedModel.label} GGUF shards...`, 0);
 
   try {
-    const { CreateWebWorkerMLCEngine, prebuiltAppConfig } = await loadWebLLMModule();
+    const [{ Wllama }, wasmConfig] = await Promise.all([loadWllamaModule(), loadWllamaWasmConfig()]);
 
-    if (worker) {
-      worker.terminate();
+    if (engine?.exit) {
+      await engine.exit();
     }
 
-    worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
-
-    const appConfig = {
-      ...prebuiltAppConfig,
-      model_list: MODEL_OPTIONS,
-      cacheBackend: elements.cacheSelect.value,
-    };
-
-    engine = await CreateWebWorkerMLCEngine(worker, selectedModel, {
-      appConfig,
-      initProgressCallback: (progress) => {
-        const report = progress.text || "Preparing model files...";
-        setStatus(report, progress.progress ?? 0);
+    engine = new Wllama(wasmConfig, { parallelDownloads: 5 });
+    const shardFiles = await cacheModelShards(selectedModel);
+    setStatus(`Loading ${selectedModel.label} with llama.cpp/Wllama from browser cache...`, 0.05);
+    await engine.loadModel(shardFiles, {
+      progressCallback: ({ loaded, total }) => {
+        const progress = total ? loaded / total : 0;
+        setStatus(`Loading cached GGUF shards: ${Math.round(progress * 100)}%`, progress);
       },
     });
 
-    setStatus(`${selectedModel} is ready.`, 1);
+    setStatus(`${selectedModel.label} is ready from GGUF shards.`, 1);
   } catch (error) {
     engine = null;
     console.error(error);
-    setStatus(`Could not load ${selectedModel}. Add the MLC model files, then try again.`);
+    setStatus(`Could not load ${selectedModel.label}: ${error.message}`);
   } finally {
     elements.loadModelButton.disabled = false;
   }
@@ -1236,7 +787,7 @@ async function sendMessage(event) {
   }
 
   if (!engine) {
-    setStatus("Load RoLLM1-mini or RoLLM1-pro before sending.");
+    setStatus("Load a RoLLM GGUF model before sending.");
     return;
   }
 
@@ -1252,23 +803,15 @@ async function sendMessage(event) {
   renderChat();
 
   try {
-    const chunks = await engine.chat.completions.create({
+    const response = await engine.createChatCompletion({
       messages: chatMessages(),
       temperature: Number(elements.temperatureInput.value),
       top_p: Number(elements.topPInput.value),
       max_tokens: Number(elements.maxTokensInput.value),
-      stream: true,
-      stream_options: { include_usage: true },
     });
-
-    for await (const chunk of chunks) {
-      const delta = chunk.choices?.[0]?.delta?.content ?? "";
-      if (delta) {
-        assistantMessage.content += delta;
-        saveAll();
-        renderChat();
-      }
-    }
+    assistantMessage.content = response.choices?.[0]?.message?.content ?? "[No response generated.]";
+    saveAll();
+    renderChat();
   } catch (error) {
     console.error(error);
     assistantMessage.content ||= "[Generation stopped or failed.]";
@@ -1283,8 +826,9 @@ async function sendMessage(event) {
 }
 
 function stopGeneration() {
-  if (engine?.interruptGenerate) {
-    engine.interruptGenerate();
+  if (engine?.exit) {
+    engine.exit();
+    engine = null;
   }
   setStatus("Stopping generation...");
 }
@@ -1396,14 +940,13 @@ function focusRepositorySearch() {
 }
 
 elements.composerForm.addEventListener("submit", sendMessage);
-elements.captureAgeButton.addEventListener("click", verifyAge);
 elements.backButton.addEventListener("click", () => elements.characterList.scrollIntoView({ behavior: "smooth" }));
 elements.clearProfileButton.addEventListener("click", clearProfile);
 elements.closeProfileButton.addEventListener("click", closeProfile);
 elements.loadModelButton.addEventListener("click", loadModel);
 elements.moreButton.addEventListener("click", downloadChat);
 elements.newCharacterButton.addEventListener("click", newCharacter);
-elements.nsfwToggleButton.addEventListener("click", toggleNsfwMode);
+elements.adultCheck.addEventListener("change", setAdultCheck);
 elements.personaForm.addEventListener("input", updateCharacterFromForm);
 elements.profileButton.addEventListener("click", openProfile);
 elements.profileForm.addEventListener("submit", saveProfile);
@@ -1413,17 +956,11 @@ elements.profileModal.addEventListener("click", (event) => {
   }
 });
 elements.repositoryForm.addEventListener("submit", loadRepository);
-elements.resetAgeGateButton.addEventListener("click", resetAgeGate);
 elements.resetCharacterButton.addEventListener("click", resetActiveCharacter);
 elements.searchButton.addEventListener("click", focusRepositorySearch);
-elements.startAgeCheckButton.addEventListener("click", startAgeCheck);
 elements.stopButton.addEventListener("click", stopGeneration);
 elements.temperatureInput.addEventListener("input", renderSettings);
 elements.topPInput.addEventListener("input", renderSettings);
 
 renderModelOptions();
 render();
-
-if (!("gpu" in navigator)) {
-  setStatus("WebGPU is not available here. Open this page in a recent Chromium-based browser.");
-}

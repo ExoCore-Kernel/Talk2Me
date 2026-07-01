@@ -1108,3 +1108,18 @@ progress::-moz-progress-bar {
     font-size: 0.72rem;
   }
 }
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.75rem 0;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.check-row input {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--accent);
+}
