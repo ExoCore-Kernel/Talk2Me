@@ -157,6 +157,7 @@ const elements = {
 
 let engine = null;
 let isGenerating = false;
+let isModelLoading = false;
 let wllamaModulePromise = null;
 
 const state = {
@@ -744,6 +745,10 @@ function shardNumberFromName(fileName) {
   return match ? Number(match[1]) : null;
 }
 
+function isExpectedModelShard(file, model) {
+  return isGgufFile(file) && file.name.startsWith(`${model.shardPrefix}-`);
+}
+
 function isGgufFile(file) {
   return file?.name?.toLowerCase().endsWith(".gguf");
 }
@@ -753,12 +758,12 @@ function selectedModelFiles(model) {
   const hasPerShardSelection = perShardFiles.some(Boolean);
 
   if (hasPerShardSelection) {
-    return perShardFiles.filter(isGgufFile);
+    return perShardFiles.filter((file) => isExpectedModelShard(file, model));
   }
 
   const filesByShard = new Map();
   Array.from(elements.modelFilesInput.files ?? [])
-    .filter(isGgufFile)
+    .filter((file) => isExpectedModelShard(file, model))
     .forEach((file) => {
       const shardNumber = shardNumberFromName(file.name);
       if (shardNumber && shardNumber >= 1 && shardNumber <= model.shards && !filesByShard.has(shardNumber)) {
@@ -775,13 +780,13 @@ function selectedModelMissingShards(model) {
 
   if (hasPerShardSelection) {
     return perShardFiles
-      .map((file, index) => (isGgufFile(file) ? null : expectedShardName(model, index + 1)))
+      .map((file, index) => (isExpectedModelShard(file, model) ? null : expectedShardName(model, index + 1)))
       .filter(Boolean);
   }
 
   const selectedShardNumbers = new Set(
     Array.from(elements.modelFilesInput.files ?? [])
-      .filter(isGgufFile)
+      .filter((file) => isExpectedModelShard(file, model))
       .map((file) => shardNumberFromName(file.name))
       .filter((number) => number && number >= 1 && number <= model.shards),
   );
@@ -860,6 +865,11 @@ function downloadSelectedModelFiles() {
 }
 
 async function loadModel() {
+  if (isModelLoading) {
+    setStatus("A RoLLM GGUF model is already loading. Wait for the ready message before sending.");
+    return;
+  }
+
   const selectedModel = selectedModelConfig();
   const shardFiles = selectedModelFiles(selectedModel);
 
@@ -870,8 +880,11 @@ async function loadModel() {
     return;
   }
 
+  engine = null;
+  isModelLoading = true;
   elements.loadModelButton.disabled = true;
   elements.downloadModelButton.disabled = true;
+  elements.sendButton.disabled = true;
   setStatus(`Loading ${selectedModel.label} from selected GGUF files...`, 0.05);
 
   try {
@@ -883,14 +896,15 @@ async function loadModel() {
     }
 
     appendModelDebug("Wllama runtime ready; starting GGUF load", { shards: shardFiles.length });
-    engine = new Wllama(wasmConfig, { parallelDownloads: 5 });
-    await engine.loadModel(shardFiles, {
+    const loadedEngine = new Wllama(wasmConfig, { parallelDownloads: 5 });
+    await loadedEngine.loadModel(shardFiles, {
       progressCallback: ({ loaded, total }) => {
         const progress = total ? loaded / total : 0;
         setStatus(`Loading selected GGUF files: ${Math.round(progress * 100)}%`, progress);
       },
     });
 
+    engine = loadedEngine;
     setStatus(`${selectedModel.label} is ready from selected GGUF files.`, 1);
   } catch (error) {
     engine = null;
@@ -898,8 +912,10 @@ async function loadModel() {
     appendModelDebug("Model load failed", { error: error.message, stack: error.stack });
     setStatus(`Could not load ${selectedModel.label}: ${error.message}`);
   } finally {
+    isModelLoading = false;
     elements.loadModelButton.disabled = false;
     elements.downloadModelButton.disabled = false;
+    elements.sendButton.disabled = false;
   }
 }
 
@@ -908,6 +924,11 @@ async function sendMessage(event) {
 
   const content = elements.messageInput.value.trim();
   if (!content || isGenerating) {
+    return;
+  }
+
+  if (isModelLoading) {
+    setStatus("RoLLM is still loading. Wait for the ready message before sending.");
     return;
   }
 
@@ -958,6 +979,7 @@ function stopGeneration() {
     engine.exit();
     engine = null;
   }
+  isModelLoading = false;
   setStatus("Stopping generation...");
 }
 
@@ -1076,6 +1098,9 @@ elements.loadModelButton.addEventListener("click", loadModel);
 elements.modelFilesInput.addEventListener("change", describeSelectedModelFiles);
 elements.modelShardInputs.forEach((input) => input.addEventListener("change", describeSelectedModelFiles));
 elements.modelSelect.addEventListener("change", () => {
+  if (!isModelLoading) {
+    engine = null;
+  }
   renderModelDownloadLinks();
   describeSelectedModelFiles();
 });
