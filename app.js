@@ -739,17 +739,55 @@ function expectedShardName(model, shardNumber) {
   return `${model.shardPrefix}-${String(shardNumber).padStart(5, "0")}-of-${String(model.shards).padStart(5, "0")}.gguf`;
 }
 
-function selectedModelFiles(model) {
-  const perShardFiles = elements.modelShardInputs
-    .map((input) => input.files?.[0])
-    .filter(Boolean);
-  const sourceFiles = perShardFiles.length
-    ? perShardFiles
-    : Array.from(elements.modelFilesInput.files ?? []);
+function shardNumberFromName(fileName) {
+  const match = fileName.match(/-(\d{5})-of-(\d{5})\.gguf$/i);
+  return match ? Number(match[1]) : null;
+}
 
-  return sourceFiles
-    .filter((file) => file.name.startsWith(model.shardPrefix) && file.name.endsWith(".gguf"))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+function isGgufFile(file) {
+  return file?.name?.toLowerCase().endsWith(".gguf");
+}
+
+function selectedModelFiles(model) {
+  const perShardFiles = elements.modelShardInputs.map((input) => input.files?.[0] ?? null);
+  const hasPerShardSelection = perShardFiles.some(Boolean);
+
+  if (hasPerShardSelection) {
+    return perShardFiles.filter(isGgufFile);
+  }
+
+  const filesByShard = new Map();
+  Array.from(elements.modelFilesInput.files ?? [])
+    .filter(isGgufFile)
+    .forEach((file) => {
+      const shardNumber = shardNumberFromName(file.name);
+      if (shardNumber && shardNumber >= 1 && shardNumber <= model.shards && !filesByShard.has(shardNumber)) {
+        filesByShard.set(shardNumber, file);
+      }
+    });
+
+  return Array.from({ length: model.shards }, (_, index) => filesByShard.get(index + 1)).filter(Boolean);
+}
+
+function selectedModelMissingShards(model) {
+  const perShardFiles = elements.modelShardInputs.map((input) => input.files?.[0] ?? null);
+  const hasPerShardSelection = perShardFiles.some(Boolean);
+
+  if (hasPerShardSelection) {
+    return perShardFiles
+      .map((file, index) => (isGgufFile(file) ? null : expectedShardName(model, index + 1)))
+      .filter(Boolean);
+  }
+
+  const selectedShardNumbers = new Set(
+    Array.from(elements.modelFilesInput.files ?? [])
+      .filter(isGgufFile)
+      .map((file) => shardNumberFromName(file.name))
+      .filter((number) => number && number >= 1 && number <= model.shards),
+  );
+
+  return Array.from({ length: model.shards }, (_, index) => expectedShardName(model, index + 1))
+    .filter((_, index) => !selectedShardNumbers.has(index + 1));
 }
 
 function updateShardFileNames() {
@@ -769,9 +807,7 @@ function describeSelectedModelFiles() {
   const model = selectedModelConfig();
   updateShardFileNames();
   const files = selectedModelFiles(model);
-  const selectedNames = files.map((file) => file.name);
-  const missingShards = Array.from({ length: model.shards }, (_, index) => expectedShardName(model, index + 1))
-    .filter((name) => !selectedNames.includes(name));
+  const missingShards = selectedModelMissingShards(model);
 
   appendModelDebug("Shard selection changed", { selected: files.length, missing: missingShards.length });
 
@@ -827,9 +863,7 @@ async function loadModel() {
   const selectedModel = selectedModelConfig();
   const shardFiles = selectedModelFiles(selectedModel);
 
-  const expectedNames = Array.from({ length: selectedModel.shards }, (_, index) => expectedShardName(selectedModel, index + 1));
-  const selectedNames = shardFiles.map((file) => file.name);
-  const missingNames = expectedNames.filter((name) => !selectedNames.includes(name));
+  const missingNames = selectedModelMissingShards(selectedModel);
 
   if (shardFiles.length !== selectedModel.shards || missingNames.length) {
     setStatus(`Choose all ${selectedModel.shards} downloaded ${selectedModel.label} GGUF shards before loading. Selected ${shardFiles.length}. Missing: ${missingNames.join(", ") || "unknown shard order"}`);
@@ -861,7 +895,7 @@ async function loadModel() {
   } catch (error) {
     engine = null;
     console.error(error);
-    appendModelDebug("Model load failed", { error: error.message });
+    appendModelDebug("Model load failed", { error: error.message, stack: error.stack });
     setStatus(`Could not load ${selectedModel.label}: ${error.message}`);
   } finally {
     elements.loadModelButton.disabled = false;
@@ -884,6 +918,7 @@ async function sendMessage(event) {
 
   const messages = activeChat();
   messages.push({ role: "user", content });
+  const completionMessages = chatMessages();
   const assistantMessage = { role: "assistant", content: "" };
   messages.push(assistantMessage);
   elements.messageInput.value = "";
@@ -895,7 +930,7 @@ async function sendMessage(event) {
 
   try {
     const response = await engine.createChatCompletion({
-      messages: chatMessages(),
+      messages: completionMessages,
       temperature: Number(elements.temperatureInput.value),
       top_p: Number(elements.topPInput.value),
       max_tokens: Number(elements.maxTokensInput.value),
@@ -905,8 +940,10 @@ async function sendMessage(event) {
     renderChat();
   } catch (error) {
     console.error(error);
-    assistantMessage.content ||= "[Generation stopped or failed.]";
-    setStatus("Generation stopped or failed.");
+    const errorMessage = error?.message || String(error);
+    appendModelDebug("Generation failed", { error: errorMessage, stack: error?.stack });
+    assistantMessage.content ||= `[Generation stopped or failed: ${errorMessage}]`;
+    setStatus(`Generation stopped or failed: ${errorMessage}`);
   } finally {
     isGenerating = false;
     elements.sendButton.disabled = false;
