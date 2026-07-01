@@ -9,9 +9,8 @@
 The custom trained AI chatbots run on-device.
 - Its open-source
 Feel free to pruise through the surce code.
-- Age verification is on-device
-NSFW content must be age verified though a 
-local AI model. Your photo is never sent to a server.
+- Debug adult mode is a simple local checkbox
+The age camera gate is intentionally removed for debugging builds.
 
 
 ## Character Repositories
@@ -68,17 +67,17 @@ Character JSON format:
 
 See `examples/character-repository/` for a complete tiny pack.
 
-## Add The WebLLM Models Later
+## GGUF Model Loading
 
-Drop your compiled MLC WebLLM model files into:
+Talk2Me now uses Wllama, a browser llama.cpp backend that can load GGUF models. The model picker points at the RoLLM1 release shards:
 
 ```text
-models/RoLLM1-mini/
-models/RoLLM1-pro/
+https://github.com/ExoCore-Kernel/RoLLM1-models/releases/download/v0.2-beta/RoLLM1-pro-Q4_K_M-00001-of-00005.gguf
+https://github.com/ExoCore-Kernel/RoLLM1-models/releases/download/v0.2-beta/RoLLM1-pro-adult-Q4_K_M-00001-of-00005.gguf
 ```
 
-Update `MODEL_OPTIONS` in `app.js` if your generated `.wasm` names differ.
+The browser pre-caches all five shards for the selected model with the Cache API and Wllama loads the split GGUF by the first shard URL. This cannot make a first download work without internet, but it keeps the large shards around so repeat loads avoid redownloading while the browser keeps site storage.
 
-## NSFW Gate
+## Adult Debug Checkbox
 
-To ensure NSFW content is never shown to underage users, a on device, local face recognition age check is required to use the NSFW models.
+Adult mode is intentionally a single local checkbox for debugging. There is no camera, MobileAgeNet, or gate flow in this debug UI.
