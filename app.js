@@ -116,10 +116,13 @@ const elements = {
   closeProfileButton: document.querySelector("#closeProfileButton"),
   composerForm: document.querySelector("#composerForm"),
   loadRepositoryButton: document.querySelector("#loadRepositoryButton"),
+  downloadModelButton: document.querySelector("#downloadModelButton"),
   loadModelButton: document.querySelector("#loadModelButton"),
   loadProgress: document.querySelector("#loadProgress"),
   maxTokensInput: document.querySelector("#maxTokensInput"),
   messageInput: document.querySelector("#messageInput"),
+  modelDownloadLinks: document.querySelector("#modelDownloadLinks"),
+  modelFilesInput: document.querySelector("#modelFilesInput"),
   modelSelect: document.querySelector("#modelSelect"),
   modelStatus: document.querySelector("#modelStatus"),
   moreButton: document.querySelector("#moreButton"),
@@ -708,47 +711,69 @@ function shardUrls(model) {
   });
 }
 
-async function cacheModelShards(model) {
-  if (!("caches" in window)) {
-    throw new Error("This browser does not expose the Cache API needed for persistent shard storage.");
+function selectedModelFiles(model) {
+  return Array.from(elements.modelFilesInput.files ?? [])
+    .filter((file) => file.name.startsWith(model.shardPrefix) && file.name.endsWith(".gguf"))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
+
+function describeSelectedModelFiles() {
+  const model = selectedModelConfig();
+  const files = selectedModelFiles(model);
+  if (!files.length) {
+    setStatus(`No local ${model.label} files selected yet. Click Download GGUF Files, then choose all ${model.shards} downloaded shards.`);
+    return;
   }
+  setStatus(`Selected ${files.length}/${model.shards} ${model.label} GGUF files.`, files.length / model.shards);
+}
 
-  const cache = await caches.open(`talk2me-gguf-${model.model_id}-v0.2-beta`);
-  const urls = shardUrls(model);
-  let completed = 0;
-
-  await Promise.all(
-    urls.map(async (url) => {
-      const cached = await cache.match(url);
-      if (!cached) {
-        const response = await fetch(url, { cache: "force-cache" });
-        if (!response.ok) {
-          throw new Error(`${url.split("/").pop()}: ${response.status} ${response.statusText}`);
-        }
-        await cache.put(url, response.clone());
-      }
-      completed += 1;
-      setStatus(`Cached ${completed}/${urls.length} GGUF shards for ${model.label}.`, completed / urls.length);
-    }),
-  );
-
-  return Promise.all(
-    urls.map(async (url) => {
-      const cached = await cache.match(url);
-      if (!cached) {
-        throw new Error(`${url.split("/").pop()} was not found in browser cache.`);
-      }
-      const blob = await cached.blob();
-      return new File([blob], url.split("/").pop(), { type: "application/octet-stream" });
+function renderModelDownloadLinks() {
+  const model = selectedModelConfig();
+  elements.modelDownloadLinks.replaceChildren(
+    ...shardUrls(model).map((url, index) => {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = url.split("/").pop();
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = `Shard ${index + 1}`;
+      return link;
     }),
   );
 }
 
+function downloadSelectedModelFiles() {
+  const model = selectedModelConfig();
+  const urls = shardUrls(model);
+  renderModelDownloadLinks();
+  setStatus(`Download links are ready for ${model.label}. Click each shard link if your browser blocks automatic multiple downloads.`, 0);
+
+  urls.forEach((url, index) => {
+    window.setTimeout(() => {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = url.split("/").pop();
+      link.rel = "noopener";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setStatus(`Started download ${index + 1}/${urls.length}: ${link.download}`, (index + 1) / urls.length);
+    }, index * 350);
+  });
+}
+
 async function loadModel() {
   const selectedModel = selectedModelConfig();
+  const shardFiles = selectedModelFiles(selectedModel);
+
+  if (shardFiles.length !== selectedModel.shards) {
+    setStatus(`Choose all ${selectedModel.shards} downloaded ${selectedModel.label} GGUF files before loading. Selected ${shardFiles.length}.`);
+    return;
+  }
 
   elements.loadModelButton.disabled = true;
-  setStatus(`Caching ${selectedModel.label} GGUF shards...`, 0);
+  elements.downloadModelButton.disabled = true;
+  setStatus(`Loading ${selectedModel.label} from selected GGUF files...`, 0.05);
 
   try {
     const [{ Wllama }, wasmConfig] = await Promise.all([loadWllamaModule(), loadWllamaWasmConfig()]);
@@ -758,22 +783,21 @@ async function loadModel() {
     }
 
     engine = new Wllama(wasmConfig, { parallelDownloads: 5 });
-    const shardFiles = await cacheModelShards(selectedModel);
-    setStatus(`Loading ${selectedModel.label} with llama.cpp/Wllama from browser cache...`, 0.05);
     await engine.loadModel(shardFiles, {
       progressCallback: ({ loaded, total }) => {
         const progress = total ? loaded / total : 0;
-        setStatus(`Loading cached GGUF shards: ${Math.round(progress * 100)}%`, progress);
+        setStatus(`Loading selected GGUF files: ${Math.round(progress * 100)}%`, progress);
       },
     });
 
-    setStatus(`${selectedModel.label} is ready from GGUF shards.`, 1);
+    setStatus(`${selectedModel.label} is ready from selected GGUF files.`, 1);
   } catch (error) {
     engine = null;
     console.error(error);
     setStatus(`Could not load ${selectedModel.label}: ${error.message}`);
   } finally {
     elements.loadModelButton.disabled = false;
+    elements.downloadModelButton.disabled = false;
   }
 }
 
@@ -942,7 +966,13 @@ elements.composerForm.addEventListener("submit", sendMessage);
 elements.backButton.addEventListener("click", () => elements.characterList.scrollIntoView({ behavior: "smooth" }));
 elements.clearProfileButton.addEventListener("click", clearProfile);
 elements.closeProfileButton.addEventListener("click", closeProfile);
+elements.downloadModelButton.addEventListener("click", downloadSelectedModelFiles);
 elements.loadModelButton.addEventListener("click", loadModel);
+elements.modelFilesInput.addEventListener("change", describeSelectedModelFiles);
+elements.modelSelect.addEventListener("change", () => {
+  renderModelDownloadLinks();
+  describeSelectedModelFiles();
+});
 elements.moreButton.addEventListener("click", downloadChat);
 elements.newCharacterButton.addEventListener("click", newCharacter);
 elements.adultCheck.addEventListener("change", setAdultCheck);
@@ -962,4 +992,5 @@ elements.temperatureInput.addEventListener("input", renderSettings);
 elements.topPInput.addEventListener("input", renderSettings);
 
 renderModelOptions();
+renderModelDownloadLinks();
 render();
