@@ -1241,3 +1241,60 @@ body {
   font-weight: 850;
   text-decoration: none;
 }
+
+.shard-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.shard-picker {
+  min-height: 4.6rem;
+  align-content: center;
+  gap: 0.35rem;
+  padding: 0.65rem 0.45rem;
+  text-align: center;
+}
+
+.shard-file-name {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: #c8bddf;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legacy-picker {
+  grid-column: 1 / -1;
+  min-height: 2.2rem;
+  opacity: 0.82;
+}
+
+.model-debug {
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(5, 8, 18, 0.72);
+}
+
+.model-debug summary {
+  cursor: pointer;
+  padding: 0.6rem 0.7rem;
+  color: #d8c8ff;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.model-debug pre {
+  max-height: 140px;
+  margin: 0;
+  overflow: auto;
+  padding: 0 0.7rem 0.7rem;
+  color: #b9f7cf;
+  font-size: 0.66rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}

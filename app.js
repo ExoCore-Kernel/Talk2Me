@@ -121,9 +121,12 @@ const elements = {
   loadProgress: document.querySelector("#loadProgress"),
   maxTokensInput: document.querySelector("#maxTokensInput"),
   messageInput: document.querySelector("#messageInput"),
+  modelDebugLog: document.querySelector("#modelDebugLog"),
   modelDownloadLinks: document.querySelector("#modelDownloadLinks"),
   modelFilesInput: document.querySelector("#modelFilesInput"),
   modelSelect: document.querySelector("#modelSelect"),
+  modelShardInputs: Array.from(document.querySelectorAll(".model-shard-input")),
+  modelShardNames: Array.from(document.querySelectorAll(".shard-file-name")),
   modelStatus: document.querySelector("#modelStatus"),
   moreButton: document.querySelector("#moreButton"),
   newCharacterButton: document.querySelector("#newCharacterButton"),
@@ -289,9 +292,30 @@ function chatMessages() {
   return [{ role: "system", content: buildSystemPrompt() }, ...activeChat()];
 }
 
+function appendModelDebug(message, details = {}) {
+  const timestamp = new Date().toLocaleTimeString();
+  const detailEntries = Object.entries(details).filter(([, value]) => value !== undefined && value !== null && value !== "");
+  const detailText = detailEntries.length
+    ? ` ${detailEntries.map(([key, value]) => `${key}=${value}`).join(" ")}`
+    : "";
+  const line = `[${timestamp}] ${message}${detailText}`;
+  console.debug(`[Talk2Me model] ${message}`, details);
+
+  if (!elements.modelDebugLog) {
+    return;
+  }
+
+  const previous = elements.modelDebugLog.textContent === "Waiting for shard selection..."
+    ? ""
+    : elements.modelDebugLog.textContent.trimEnd();
+  elements.modelDebugLog.textContent = previous ? `${previous}\n${line}` : line;
+  elements.modelDebugLog.scrollTop = elements.modelDebugLog.scrollHeight;
+}
+
 function setStatus(text, progress = elements.loadProgress.value) {
   elements.modelStatus.textContent = text;
   elements.loadProgress.value = Number(progress) || 0;
+  appendModelDebug(text, { progress: elements.loadProgress.value });
 }
 
 function loadWllamaModule() {
@@ -711,20 +735,57 @@ function shardUrls(model) {
   });
 }
 
+function expectedShardName(model, shardNumber) {
+  return `${model.shardPrefix}-${String(shardNumber).padStart(5, "0")}-of-${String(model.shards).padStart(5, "0")}.gguf`;
+}
+
 function selectedModelFiles(model) {
-  return Array.from(elements.modelFilesInput.files ?? [])
+  const perShardFiles = elements.modelShardInputs
+    .map((input) => input.files?.[0])
+    .filter(Boolean);
+  const sourceFiles = perShardFiles.length
+    ? perShardFiles
+    : Array.from(elements.modelFilesInput.files ?? []);
+
+  return sourceFiles
     .filter((file) => file.name.startsWith(model.shardPrefix) && file.name.endsWith(".gguf"))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 }
 
+function updateShardFileNames() {
+  const model = selectedModelConfig();
+  elements.modelShardInputs.forEach((input, index) => {
+    const file = input.files?.[0];
+    const label = elements.modelShardNames[index];
+    if (!label) {
+      return;
+    }
+
+    label.textContent = file ? file.name : `Needs ${expectedShardName(model, index + 1)}`;
+  });
+}
+
 function describeSelectedModelFiles() {
   const model = selectedModelConfig();
+  updateShardFileNames();
   const files = selectedModelFiles(model);
+  const selectedNames = files.map((file) => file.name);
+  const missingShards = Array.from({ length: model.shards }, (_, index) => expectedShardName(model, index + 1))
+    .filter((name) => !selectedNames.includes(name));
+
+  appendModelDebug("Shard selection changed", { selected: files.length, missing: missingShards.length });
+
   if (!files.length) {
-    setStatus(`No local ${model.label} files selected yet. Click Download GGUF Files, then choose all ${model.shards} downloaded shards.`);
+    setStatus(`No local ${model.label} files selected yet. Click Download GGUF Files, then choose shards 1-${model.shards}.`);
     return;
   }
-  setStatus(`Selected ${files.length}/${model.shards} ${model.label} GGUF files.`, files.length / model.shards);
+
+  if (missingShards.length) {
+    setStatus(`Selected ${files.length}/${model.shards} ${model.label} GGUF files. Missing: ${missingShards.join(", ")}`, files.length / model.shards);
+    return;
+  }
+
+  setStatus(`Selected all ${model.shards} ${model.label} GGUF shards. Ready to load.`, 1);
 }
 
 function renderModelDownloadLinks() {
@@ -766,8 +827,12 @@ async function loadModel() {
   const selectedModel = selectedModelConfig();
   const shardFiles = selectedModelFiles(selectedModel);
 
-  if (shardFiles.length !== selectedModel.shards) {
-    setStatus(`Choose all ${selectedModel.shards} downloaded ${selectedModel.label} GGUF files before loading. Selected ${shardFiles.length}.`);
+  const expectedNames = Array.from({ length: selectedModel.shards }, (_, index) => expectedShardName(selectedModel, index + 1));
+  const selectedNames = shardFiles.map((file) => file.name);
+  const missingNames = expectedNames.filter((name) => !selectedNames.includes(name));
+
+  if (shardFiles.length !== selectedModel.shards || missingNames.length) {
+    setStatus(`Choose all ${selectedModel.shards} downloaded ${selectedModel.label} GGUF shards before loading. Selected ${shardFiles.length}. Missing: ${missingNames.join(", ") || "unknown shard order"}`);
     return;
   }
 
@@ -776,12 +841,14 @@ async function loadModel() {
   setStatus(`Loading ${selectedModel.label} from selected GGUF files...`, 0.05);
 
   try {
+    appendModelDebug("Loading Wllama runtime", { files: shardFiles.map((file) => file.name).join(",") });
     const [{ Wllama }, wasmConfig] = await Promise.all([loadWllamaModule(), loadWllamaWasmConfig()]);
 
     if (engine?.exit) {
       await engine.exit();
     }
 
+    appendModelDebug("Wllama runtime ready; starting GGUF load", { shards: shardFiles.length });
     engine = new Wllama(wasmConfig, { parallelDownloads: 5 });
     await engine.loadModel(shardFiles, {
       progressCallback: ({ loaded, total }) => {
@@ -794,6 +861,7 @@ async function loadModel() {
   } catch (error) {
     engine = null;
     console.error(error);
+    appendModelDebug("Model load failed", { error: error.message });
     setStatus(`Could not load ${selectedModel.label}: ${error.message}`);
   } finally {
     elements.loadModelButton.disabled = false;
@@ -969,6 +1037,7 @@ elements.closeProfileButton.addEventListener("click", closeProfile);
 elements.downloadModelButton.addEventListener("click", downloadSelectedModelFiles);
 elements.loadModelButton.addEventListener("click", loadModel);
 elements.modelFilesInput.addEventListener("change", describeSelectedModelFiles);
+elements.modelShardInputs.forEach((input) => input.addEventListener("change", describeSelectedModelFiles));
 elements.modelSelect.addEventListener("change", () => {
   renderModelDownloadLinks();
   describeSelectedModelFiles();
