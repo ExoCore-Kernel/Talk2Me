@@ -319,6 +319,14 @@ function setStatus(text, progress = elements.loadProgress.value) {
   appendModelDebug(text, { progress: elements.loadProgress.value });
 }
 
+function formatDuration(milliseconds) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
+
 function loadWllamaModule() {
   wllamaModulePromise ??= import(WLLAMA_MODULE_URL);
   return wllamaModulePromise;
@@ -926,7 +934,17 @@ async function loadModel() {
   elements.loadModelButton.disabled = true;
   elements.downloadModelButton.disabled = true;
   elements.sendButton.disabled = true;
-  setStatus(`Loading ${selectedModel.label} from selected GGUF files...`, 0.05);
+  const loadStartedAt = Date.now();
+  let latestProgress = 0.05;
+  const setLoadingStatus = (message, progress = latestProgress) => {
+    latestProgress = progress;
+    setStatus(`${message} Elapsed: ${formatDuration(Date.now() - loadStartedAt)}. Large 5-shard GGUF models can take several minutes to load.`, progress);
+  };
+  const loadingHeartbeat = window.setInterval(() => {
+    setLoadingStatus(`Still loading ${selectedModel.label}...`);
+  }, 15000);
+
+  setLoadingStatus(`Loading ${selectedModel.label} from selected GGUF files...`, latestProgress);
 
   try {
     appendModelDebug("Loading Wllama runtime", { files: shardFiles.map((file) => file.name).join(",") });
@@ -940,8 +958,8 @@ async function loadModel() {
     const loadedEngine = new Wllama(wasmConfig, { parallelDownloads: 5 });
     await loadedEngine.loadModel(shardFiles, {
       progressCallback: ({ loaded, total }) => {
-        const progress = total ? loaded / total : 0;
-        setStatus(`Loading selected GGUF files: ${Math.round(progress * 100)}%`, progress);
+        const progress = total ? loaded / total : latestProgress;
+        setLoadingStatus(`Loading selected GGUF files: ${Math.round(progress * 100)}%.`, progress);
       },
     });
 
@@ -953,6 +971,7 @@ async function loadModel() {
     appendModelDebug("Model load failed", { error: error.message, stack: error.stack });
     setStatus(`Could not load ${selectedModel.label}: ${error.message}`);
   } finally {
+    window.clearInterval(loadingHeartbeat);
     isModelLoading = false;
     elements.loadModelButton.disabled = false;
     elements.downloadModelButton.disabled = false;
