@@ -43,7 +43,8 @@ STYLE
 const ROLLM_RELEASE_BASE = "https://github.com/ExoCore-Kernel/RoLLM1-models/releases/download/v0.2-beta";
 const WLLAMA_VERSION = "3.5.1";
 const WLLAMA_MODULE_URL = `https://cdn.jsdelivr.net/npm/@wllama/wllama@${WLLAMA_VERSION}/esm/index.js`;
-const WLLAMA_WASM_CDN_URL = `https://cdn.jsdelivr.net/npm/@wllama/wllama@${WLLAMA_VERSION}/esm/wasm-from-cdn.js`;
+const WLLAMA_WASM_URL = `https://cdn.jsdelivr.net/npm/@wllama/wllama@${WLLAMA_VERSION}/src/wasm/wllama.wasm`;
+const WLLAMA_WASM_CONFIG = { default: WLLAMA_WASM_URL };
 
 const MODEL_OPTIONS = [
   {
@@ -151,7 +152,6 @@ const elements = {
 let engine = null;
 let isGenerating = false;
 let wllamaModulePromise = null;
-let wllamaWasmConfigPromise = null;
 
 const state = {
   activeCharacterId: readJson(STORAGE_KEYS.activeCharacterId, DEFAULT_CHARACTERS[0].id),
@@ -296,9 +296,8 @@ function loadWllamaModule() {
   return wllamaModulePromise;
 }
 
-async function loadWllamaWasmConfig() {
-  wllamaWasmConfigPromise ??= import(WLLAMA_WASM_CDN_URL).then((module) => module.default);
-  return wllamaWasmConfigPromise;
+function loadWllamaWasmConfig() {
+  return WLLAMA_WASM_CONFIG;
 }
 
 function normalizeGithubRawUrl(url) {
