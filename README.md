@@ -76,7 +76,31 @@ https://github.com/ExoCore-Kernel/RoLLM1-models/releases/download/v0.2-beta/RoLL
 https://github.com/ExoCore-Kernel/RoLLM1-models/releases/download/v0.2-beta/RoLLM1-pro-adult-Q4_K_M-00001-of-00005.gguf
 ```
 
-The browser pre-caches all five shards for the selected model with the Cache API and Wllama loads the split GGUF by the first shard URL. This cannot make a first download work without internet, but it keeps the large shards around so repeat loads avoid redownloading while the browser keeps site storage.
+GitHub release assets do not reliably allow browser JavaScript `fetch()` from every site origin, so Talk2Me uses normal browser downloads and then loads the local files you select. Wllama loads the split GGUF from the five selected shard files.
+
+### How to download a RoLLM model
+
+1. Open Talk2Me in a browser with internet access.
+2. In the **Model** card, choose **RoLLM-Pro** or **RoLLM-Pro-adult** from the Runtime dropdown.
+3. Click **Download GGUF Files**. Talk2Me opens direct browser downloads for all five `.gguf` shards. If your browser asks, allow multiple downloads.
+4. After the downloads finish, click **Choose downloaded shards** and select all five `.gguf` files for the same model.
+5. Click **Load Selected Files** and wait until the status says the selected model is ready. Keep the tab open while loading because the shards are large.
+
+If you want to download the files manually, open the release page and download every shard for the model you want:
+
+```text
+https://github.com/ExoCore-Kernel/RoLLM1-models/releases/tag/v0.2-beta
+```
+
+The adult model files are named like this and must all be kept together:
+
+```text
+RoLLM1-pro-adult-Q4_K_M-00001-of-00005.gguf
+RoLLM1-pro-adult-Q4_K_M-00002-of-00005.gguf
+RoLLM1-pro-adult-Q4_K_M-00003-of-00005.gguf
+RoLLM1-pro-adult-Q4_K_M-00004-of-00005.gguf
+RoLLM1-pro-adult-Q4_K_M-00005-of-00005.gguf
+```
 
 ## Adult Debug Checkbox
 
