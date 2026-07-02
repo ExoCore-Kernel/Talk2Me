@@ -69,7 +69,31 @@ See `examples/character-repository/` for a complete tiny pack.
 
 ## GGUF Model Loading
 
-Talk2Me now uses Wllama, a browser llama.cpp backend that can load GGUF models. The model picker points at the RoLLM1 release shards:
+Talk2Me runs split GGUF shards directly in the browser through Wllama. There is no backend API, localhost model server, or sideloading requirement for the web version, so the app can be published as static HTML, CSS, and JavaScript on GitHub Pages.
+
+The user's browser still needs enough free RAM/disk to fetch and hold the shards before Wllama initializes them. A 2.4 GB browser model is realistic on some desktops and high-memory devices, but may fail on phones or storage-constrained browsers. If that happens, publish a smaller quantization for mobile users.
+
+Do not commit the current RoLLM shards to this Pages repo:
+
+- GitHub blocks normal repository files larger than 100 MiB.
+- Published GitHub Pages sites may be no larger than 1 GB.
+- The current five-shard RoLLM GGUF is about 2.4 GB total, so even smaller shard sizes would still exceed the Pages site size limit.
+
+## Local Static Test
+
+Run a plain static file server:
+
+```text
+npm run serve
+```
+
+Then open:
+
+```text
+http://127.0.0.1:4173/
+```
+
+Talk2Me's model picker points at the RoLLM1 release shards:
 
 ```text
 https://github.com/ExoCore-Kernel/RoLLM1-models/releases/download/v0.2-beta/RoLLM1-pro-Q4_K_M-00001-of-00005.gguf

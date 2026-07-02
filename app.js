@@ -43,7 +43,7 @@ STYLE
 const ROLLM_RELEASE_BASE = "https://github.com/ExoCore-Kernel/RoLLM1-models/releases/download/v0.2-beta";
 const WLLAMA_VERSION = "3.5.1";
 const WLLAMA_MODULE_URL = `https://cdn.jsdelivr.net/npm/@wllama/wllama@${WLLAMA_VERSION}/esm/index.js`;
-const WLLAMA_WASM_URL = `https://cdn.jsdelivr.net/npm/@wllama/wllama@${WLLAMA_VERSION}/src/wasm/wllama.wasm`;
+const WLLAMA_WASM_URL = `https://cdn.jsdelivr.net/npm/@wllama/wllama@${WLLAMA_VERSION}/esm/wasm/wllama.wasm`;
 const WLLAMA_WASM_CONFIG = { default: WLLAMA_WASM_URL };
 
 const MODEL_OPTIONS = [
@@ -596,6 +596,10 @@ function renderModelOptions() {
   );
 }
 
+function cleanAssistantContent(content) {
+  return content.replace(/^assistant\s*\n/i, "");
+}
+
 function renderCharacters() {
   elements.characterList.replaceChildren(
     ...state.characters.map((character) => {
@@ -957,6 +961,8 @@ async function loadModel() {
     appendModelDebug("Wllama runtime ready; starting GGUF load", { shards: shardFiles.length });
     const loadedEngine = new Wllama(wasmConfig, { parallelDownloads: 5 });
     await loadedEngine.loadModel(shardFiles, {
+      n_ctx: 2048,
+      n_batch: 128,
       progressCallback: ({ loaded, total }) => {
         const progress = total ? loaded / total : latestProgress;
         setLoadingStatus(`Loading selected GGUF files: ${Math.round(progress * 100)}%.`, progress);
