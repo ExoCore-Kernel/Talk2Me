@@ -1,318 +1,56 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Talk2Me</title>
-    <meta
-      name="description"
-      content="A local GGUF roleplaying site for character cards and private browser-based chat."
-    />
-    <link rel="stylesheet" href="./styles.css?v=browser-gguf-v2" />
-  </head>
-  <body>
-    <noscript>
-      <div class="noscript">Talk2Me needs JavaScript enabled to run local GGUF models in your browser.</div>
-    </noscript>
+const chatList = document.getElementById("chatList");
+const deleteCurrentChatButton = document.getElementById("deleteCurrentChatButton");
+const deleteAllChatsButton = document.getElementById("deleteAllChatsButton");
 
-    <div class="app-shell">
-      <aside class="library-panel" aria-label="Character library">
-        <header class="app-header">
-          <div>
-            <h1>Talk2Me</h1>
-            <p>Continue your stories</p>
-          </div>
-          <div class="header-actions">
-            <button id="searchButton" class="round-button" type="button" title="Search" aria-label="Search">
-              <span aria-hidden="true">⌕</span>
-            </button>
-            <button id="profileButton" class="profile-button" type="button" title="Profile" aria-label="Profile">
-              <span id="profileInitials">You</span>
-            </button>
-          </div>
-        </header>
+function deleteChat(chatId) {
+  const chats = JSON.parse(localStorage.getItem("talk2me.chats") || "[]");
+  const nextChats = chats.filter(chat => chat.id !== chatId);
 
-        <section class="library-section" aria-labelledby="stories-title">
-          <div class="section-heading">
-            <h2 id="stories-title">Characters</h2>
-            <button id="newCharacterButton" class="small-action" type="button">New</button>
-          </div>
-          <div id="characterList" class="character-list" aria-live="polite"></div>
-        </section>
+  localStorage.setItem("talk2me.chats", JSON.stringify(nextChats));
 
-        <section class="library-section discover-section" aria-labelledby="discover-title">
-          <h2 id="discover-title">Discover more</h2>
-          <div class="genre-row" aria-label="Character genres">
-            <button class="genre-card" type="button">
-              <span aria-hidden="true">✦</span>
-              Fantasy
-            </button>
-            <button class="genre-card" type="button">
-              <span aria-hidden="true">⌁</span>
-              Sci-Fi
-            </button>
-            <button class="genre-card" type="button">
-              <span aria-hidden="true">☰</span>
-              School Life
-            </button>
-            <button class="genre-card" type="button">
-              <span aria-hidden="true">♡</span>
-              Drama
-            </button>
-          </div>
-        </section>
+  const activeChatId = localStorage.getItem("talk2me.activeChatId");
+  if (activeChatId === chatId) {
+    localStorage.removeItem("talk2me.activeChatId");
+  }
 
-        <nav class="bottom-nav" aria-label="Primary">
-          <a href="#stories-title" aria-current="page">Home</a>
-          <a href="#repositories-title">Explore</a>
-          <a href="#persona-title">Library</a>
-          <a href="#chatLog">Chats</a>
-        </nav>
-      </aside>
+  renderChatList();
+  renderActiveChat();
+}
 
-      <main class="chat-phone" aria-label="Roleplay chat">
-        <header class="chat-header">
-          <button id="backButton" class="round-button" type="button" title="Back" aria-label="Back">
-            <span aria-hidden="true">‹</span>
-          </button>
-          <div id="activeCharacterAvatar" class="active-avatar" aria-hidden="true"></div>
-          <div class="chat-title">
-            <h2 id="activeCharacterName">New Persona</h2>
-            <span><i aria-hidden="true"></i> AI Character</span>
-          </div>
-          <button id="moreButton" class="round-button" type="button" title="More" aria-label="More">
-            <span aria-hidden="true">⋯</span>
-          </button>
-        </header>
+function deleteCurrentChat() {
+  const activeChatId = localStorage.getItem("talk2me.activeChatId");
 
-        <section id="chatLog" class="chat-log" aria-live="polite"></section>
+  if (!activeChatId) return;
 
-        <form id="composerForm" class="composer">
-          <button class="spark-button" type="button" title="Scene tools" aria-label="Scene tools">
-            <span aria-hidden="true">✦</span>
-          </button>
-          <label class="sr-only" for="messageInput">Message</label>
-          <textarea
-            id="messageInput"
-            name="message"
-            rows="1"
-            placeholder="Type your message..."
-            autocomplete="off"
-          ></textarea>
-          <button id="stopButton" class="send-button stop" type="button" title="Stop" aria-label="Stop" disabled>
-            <span aria-hidden="true">■</span>
-          </button>
-          <button id="sendButton" class="send-button" type="submit" title="Send" aria-label="Send">
-            <span aria-hidden="true">➤</span>
-          </button>
-        </form>
-      </main>
+  const confirmed = confirm("Delete this chat?");
+  if (!confirmed) return;
 
-      <aside class="studio-panel" aria-label="Character and model settings">
-        <section class="studio-card" aria-labelledby="persona-title">
-          <div class="section-heading">
-            <h2 id="persona-title">Character Studio</h2>
-            <button id="resetCharacterButton" class="small-action muted" type="button">Reset</button>
-          </div>
+  deleteChat(activeChatId);
+}
 
-          <form id="personaForm" class="stacked-form">
-            <label>
-              Name
-              <input id="characterName" name="name" type="text" autocomplete="off" placeholder="Name the persona" />
-            </label>
+function deleteAllChats() {
+  const confirmed = confirm("Delete all chats? This cannot be undone.");
+  if (!confirmed) return;
 
-            <label>
-              Short Description
-              <textarea id="characterDescription" name="description" rows="3" placeholder="Who is this character?"></textarea>
-            </label>
+  localStorage.removeItem("talk2me.chats");
+  localStorage.removeItem("talk2me.activeChatId");
 
-            <label>
-              Personality
-              <textarea id="characterPersonality" name="personality" rows="3" placeholder="How do they speak and react?"></textarea>
-            </label>
+  renderChatList();
+  renderActiveChat();
+}
 
-            <label>
-              Scenario
-              <textarea id="characterScenario" name="scenario" rows="3" placeholder="Where does the scene begin?"></textarea>
-            </label>
+chatList?.addEventListener("click", event => {
+  const deleteButton = event.target.closest(".delete-chat-button");
+  if (!deleteButton) return;
 
-            <label>
-              Keywords
-              <input id="characterKeywords" name="keywords" type="text" autocomplete="off" placeholder="fantasy, heist, cozy" />
-            </label>
+  const chatItem = deleteButton.closest("[data-chat-id]");
+  if (!chatItem) return;
 
-            <label class="thumbnail-field">
-              Thumbnail URL
-              <input id="characterThumbnail" name="thumbnail" type="url" autocomplete="off" placeholder="Optional image URL" />
-            </label>
+  const confirmed = confirm("Delete this chat?");
+  if (!confirmed) return;
 
-            <label>
-              Opening Message
-              <textarea id="characterOpening" name="opening" rows="3" placeholder="Optional first message from the character"></textarea>
-            </label>
-          </form>
-        </section>
+  deleteChat(chatItem.dataset.chatId);
+});
 
-        <section class="studio-card repository-section" aria-labelledby="repositories-title">
-          <div class="section-heading">
-            <h2 id="repositories-title">Repositories</h2>
-          </div>
-
-          <form id="repositoryForm" class="stacked-form">
-            <label>
-              Repo URL
-              <input
-                id="repositoryUrl"
-                name="repositoryUrl"
-                type="url"
-                autocomplete="off"
-                placeholder="https://github.com/user/character-pack"
-              />
-            </label>
-            <button id="loadRepositoryButton" class="text-button primary full" type="submit">Load Repo</button>
-          </form>
-
-          <div id="repositoryStatus" class="status-box" role="status">
-            Load a character repository with an index.json file.
-          </div>
-          <div id="repositoryMeta" class="repository-meta" hidden></div>
-          <div id="repositoryCharacterList" class="repo-character-list" aria-live="polite"></div>
-        </section>
-
-        <section class="studio-card" aria-labelledby="model-title">
-          <h2 id="model-title">Model</h2>
-          <label>
-            Runtime
-            <select id="modelSelect"></select>
-          </label>
-
-          <div class="model-actions">
-            <button id="downloadModelButton" class="text-button secondary full" type="button">Download GGUF Files</button>
-            <div class="shard-picker-grid" aria-label="Choose the five downloaded GGUF shards">
-              <label class="file-picker shard-picker">
-                Choose shard 1
-                <input id="modelShardInput1" class="model-shard-input" type="file" accept=".gguf" data-shard-index="1" />
-                <span id="modelShardName1" class="shard-file-name">No file selected</span>
-              </label>
-              <label class="file-picker shard-picker">
-                Choose shard 2
-                <input id="modelShardInput2" class="model-shard-input" type="file" accept=".gguf" data-shard-index="2" />
-                <span id="modelShardName2" class="shard-file-name">No file selected</span>
-              </label>
-              <label class="file-picker shard-picker">
-                Choose shard 3
-                <input id="modelShardInput3" class="model-shard-input" type="file" accept=".gguf" data-shard-index="3" />
-                <span id="modelShardName3" class="shard-file-name">No file selected</span>
-              </label>
-              <label class="file-picker shard-picker">
-                Choose shard 4
-                <input id="modelShardInput4" class="model-shard-input" type="file" accept=".gguf" data-shard-index="4" />
-                <span id="modelShardName4" class="shard-file-name">No file selected</span>
-              </label>
-              <label class="file-picker shard-picker">
-                Choose shard 5
-                <input id="modelShardInput5" class="model-shard-input" type="file" accept=".gguf" data-shard-index="5" />
-                <span id="modelShardName5" class="shard-file-name">No file selected</span>
-              </label>
-              <label class="file-picker legacy-picker">
-                Or choose all shards at once
-                <input id="modelFilesInput" type="file" accept=".gguf" multiple />
-              </label>
-            </div>
-            <button id="loadModelButton" class="text-button primary full" type="button">Load 5 Selected Shards</button>
-          </div>
-          <div id="modelDownloadLinks" class="model-download-links" aria-live="polite"></div>
-          <div id="modelStatus" class="status-box" role="status">Download all five GGUF files, choose shards 1-5, then load.</div>
-          <progress id="loadProgress" value="0" max="1"></progress>
-          <details class="model-debug" open>
-            <summary>Model debug logs</summary>
-            <pre id="modelDebugLog" aria-live="polite">Waiting for shard selection...</pre>
-          </details>
-        </section>
-
-        <section class="studio-card debug-card" aria-labelledby="adult-title">
-          <h2 id="adult-title">Adult Debug</h2>
-          <label class="check-row">
-            <input id="adultCheck" type="checkbox" />
-            <span>Enable adult mode for debugging</span>
-          </label>
-          <div id="adultStatus" class="status-box" role="status">Adult checkbox is off.</div>
-        </section>
-
-        <section class="studio-card compact-card" aria-labelledby="settings-title">
-          <h2 id="settings-title">Generation</h2>
-          <label>
-            Temperature
-            <input id="temperatureInput" type="range" min="0.1" max="1.4" step="0.1" value="0.8" />
-            <output id="temperatureValue">0.8</output>
-          </label>
-
-          <label>
-            Top P
-            <input id="topPInput" type="range" min="0.1" max="1" step="0.05" value="0.9" />
-            <output id="topPValue">0.9</output>
-          </label>
-
-          <label>
-            Max Tokens
-            <input id="maxTokensInput" type="number" min="64" max="2048" step="64" value="512" />
-          </label>
-        </section>
-
-        <nav class="studio-tabs" aria-label="Studio tools">
-          <a href="#persona-title" aria-current="page">Studio</a>
-          <a href="#repositories-title">Repos</a>
-          <a href="#model-title">Model</a>
-          <a href="#adult-title">Adult</a>
-          <a href="#settings-title">Gen</a>
-        </nav>
-      </aside>
-    </div>
-
-    <div id="profileModal" class="modal-backdrop" hidden>
-      <section class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title">
-        <header class="modal-header">
-          <div>
-            <h2 id="profile-title">Your Profile</h2>
-            <p>Details saved here are added privately to the AI context.</p>
-          </div>
-          <button id="closeProfileButton" class="round-button" type="button" aria-label="Close profile">×</button>
-        </header>
-
-        <form id="profileForm" class="stacked-form">
-          <label>
-            Name or Nickname
-            <input id="profileName" name="profileName" type="text" autocomplete="name" placeholder="What should characters call you?" />
-          </label>
-
-          <label>
-            Pronouns
-            <input id="profilePronouns" name="profilePronouns" type="text" autocomplete="off" placeholder="Optional" />
-          </label>
-
-          <label>
-            About You
-            <textarea id="profileAbout" name="profileAbout" rows="3" placeholder="Useful background the AI can remember while roleplaying"></textarea>
-          </label>
-
-          <label>
-            Roleplay Preferences
-            <textarea id="profilePreferences" name="profilePreferences" rows="3" placeholder="Tone, pacing, favorite genres, writing style"></textarea>
-          </label>
-
-          <label>
-            Boundaries
-            <textarea id="profileBoundaries" name="profileBoundaries" rows="3" placeholder="Topics, styles, or interactions to avoid"></textarea>
-          </label>
-
-          <div class="modal-actions">
-            <button id="clearProfileButton" class="text-button subtle" type="button">Clear</button>
-            <button class="text-button primary" type="submit">Save Profile</button>
-          </div>
-        </form>
-      </section>
-    </div>
-
-    <script type="module" src="./app.js?v=five-shard-load-guard-v2"></script>
-  </body>
-</html>
+deleteCurrentChatButton?.addEventListener("click", deleteCurrentChat);
+deleteAllChatsButton?.addEventListener("click", deleteAllChats);
