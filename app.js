@@ -1,44 +1,39 @@
-const CORE_SYSTEM_PROMPT = `You are RoLLM1, a character roleplay assistant.
+const SYSTEM_PROMPT_FILES = {
+  standard: "./systemprompt.json",
+  adult: "./systemprompt-adult.json",
+};
 
-CORE BEHAVIOR
-- You are the character/persona described by the current persona card.
-- The user is a separate player, not you.
-- Stay in character unless the user asks for technical help, settings, or out-of-character clarification.
-- Respond naturally as the character.
-- You may describe your own actions, thoughts, expressions, emotions, and dialogue.
-- Do not control the user's character.
-- Do not decide the user's actions, thoughts, feelings, dialogue, success, failure, injury, escape, or outcome.
-- React to what the user does, then leave the next move open.
-
-USER AGENCY RULES
-Allowed:
-- "I glance toward the door."
-- "I lower my voice."
-- "The corridor ahead is dark."
-- "What do you do?"
-
-Not allowed:
-- "You feel scared."
-- "You step forward."
-- "You realize the truth."
-- "You successfully escape."
-- "You grab the weapon."
-
-SAFETY RULES
-- Refuse illegal, dangerous, or harmful real-world instructions.
-- Refuse requests for making weapons, explosives, malware, ransomware, phishing, stealing passwords, breaking into accounts, evading police, poisoning, or real-world violence.
-- Keep refusals brief.
-- Offer safe alternatives such as fictional scenes, cybersecurity defense, worldbuilding, or non-actionable explanation.
-
-ADULT CONTENT
-- Follow the user's local adult-content checkbox state from ADULT_CONTENT_ALLOWED.
-- Never include minors in sexual or romantic-adult contexts.
-
-STYLE
-- Be vivid but concise.
-- Avoid repetitive refusal wording.
-- Do not over-explain policies.
-- For roleplay, use immersive character dialogue and actions.`;
+const SYSTEM_PROMPT_FALLBACKS = {
+  standard: {
+    lines: [
+      "You are RoLLM1, a character roleplay assistant.",
+      "Stay in character as {NAME}. Do not control the user's character.",
+      "Description: {DESCRIPTION}",
+      "Personality: {PERSONALITY}",
+      "Scenario: {SCENARIO}",
+      "Keywords: {KEYWORDS}",
+      "{SYSTEM_PROMPT_EXTRA}",
+      "ADULT_CONTENT_ALLOWED={ADULT_CONTENT_ALLOWED}",
+      "USER PROFILE",
+      "{PROFILE}",
+    ],
+  },
+  adult: {
+    lines: [
+      "You are RoLLM1, an adult-capable character roleplay assistant.",
+      "Stay in character as {NAME}. Do not control the user's character.",
+      "Never include minors in sexual or romantic-adult contexts.",
+      "Description: {DESCRIPTION}",
+      "Personality: {PERSONALITY}",
+      "Scenario: {SCENARIO}",
+      "Keywords: {KEYWORDS}",
+      "{SYSTEM_PROMPT_EXTRA}",
+      "ADULT_CONTENT_ALLOWED={ADULT_CONTENT_ALLOWED}",
+      "USER PROFILE",
+      "{PROFILE}",
+    ],
+  },
+};
 
 const ROLLM_RELEASE_BASE = "https://github.com/ExoCore-Kernel/RoLLM1-models/releases/download/v0.2-beta";
 const WLLAMA_VERSION = "3.5.1";
@@ -50,6 +45,7 @@ const MODEL_OPTIONS = [
   {
     label: "RoLLM-Pro",
     model_id: "RoLLM1-pro",
+    promptKey: "standard",
     firstShard: `${ROLLM_RELEASE_BASE}/RoLLM1-pro-Q4_K_M-00001-of-00005.gguf`,
     shardPrefix: "RoLLM1-pro-Q4_K_M",
     shards: 5,
@@ -57,6 +53,7 @@ const MODEL_OPTIONS = [
   {
     label: "RoLLM-Pro-adult",
     model_id: "RoLLM1-pro-adult",
+    promptKey: "adult",
     firstShard: `${ROLLM_RELEASE_BASE}/RoLLM1-pro-adult-Q4_K_M-00001-of-00005.gguf`,
     shardPrefix: "RoLLM1-pro-adult-Q4_K_M",
     shards: 5,
@@ -79,25 +76,12 @@ const THEME_DEFAULT = {
   accent: "#7c4de3",
 };
 
-const DEFAULT_CHARACTERS = [
-  {
-    id: "liora",
-    name: "Liora Story",
-    description: "",
-    personality: "",
-    scenario: "",
-    keywords: "",
-    thumbnail: "",
-    opening: "",
-    systemPromptExtra: "",
-    adultContentAllowed: false,
-  },
-];
+const DEFAULT_CHARACTERS = [];
 
 const STORAGE_KEYS = {
-  characters: "talk2me.characters.v1",
-  chats: "talk2me.chats.v1",
-  activeCharacterId: "talk2me.activeCharacterId.v1",
+  characters: "talk2me.characters.v2",
+  chats: "talk2me.chats.v2",
+  activeCharacterId: "talk2me.activeCharacterId.v2",
   adultCheck: "talk2me.adultCheck.v1",
   profile: "talk2me.profile.v1",
   theme: "talk2me.theme.v1",
@@ -128,6 +112,10 @@ const elements = {
   deleteAllChatsButton: document.querySelector("#deleteAllChatsButton"),
   deleteCurrentChatButton: document.querySelector("#deleteCurrentChatButton"),
   downloadModelButton: document.querySelector("#downloadModelButton"),
+  exportAllChatsButton: document.querySelector("#exportAllChatsButton"),
+  exportCurrentChatButton: document.querySelector("#exportCurrentChatButton"),
+  explorePanel: document.querySelector("#explorePanel"),
+  chatsView: document.querySelector("#chatsView"),
   lightThemeButton: document.querySelector("#lightThemeButton"),
   loadModelButton: document.querySelector("#loadModelButton"),
   loadProgress: document.querySelector("#loadProgress"),
@@ -141,6 +129,7 @@ const elements = {
   modelShardNames: Array.from(document.querySelectorAll(".shard-file-name")),
   modelStatus: document.querySelector("#modelStatus"),
   moreButton: document.querySelector("#moreButton"),
+  mobileNavButtons: Array.from(document.querySelectorAll("[data-mobile-target]")),
   newCharacterButton: document.querySelector("#newCharacterButton"),
   newChatButton: document.querySelector("#newChatButton"),
   personaForm: document.querySelector("#personaForm"),
@@ -163,6 +152,7 @@ const elements = {
   restoreModelFilesButton: document.querySelector("#restoreModelFilesButton"),
   searchButton: document.querySelector("#searchButton"),
   sendButton: document.querySelector("#sendButton"),
+  settingsView: document.querySelector("#settingsView"),
   stopButton: document.querySelector("#stopButton"),
   swatchButtons: Array.from(document.querySelectorAll(".swatch")),
   systemThemeButton: document.querySelector("#systemThemeButton"),
@@ -175,10 +165,13 @@ const elements = {
 let engine = null;
 let isGenerating = false;
 let isModelLoading = false;
+let activeMobileView = "chats";
 let wllamaModulePromise = null;
+const systemPromptTemplates = new Map();
+let systemPromptTemplatePromise = null;
 
 const state = {
-  activeCharacterId: readJson(STORAGE_KEYS.activeCharacterId, DEFAULT_CHARACTERS[0].id),
+  activeCharacterId: readJson(STORAGE_KEYS.activeCharacterId, null),
   adultCheck: readJson(STORAGE_KEYS.adultCheck, ADULT_CHECK_DEFAULT),
   characters: readJson(STORAGE_KEYS.characters, DEFAULT_CHARACTERS),
   chats: readJson(STORAGE_KEYS.chats, {}),
@@ -187,9 +180,12 @@ const state = {
   theme: readJson(STORAGE_KEYS.theme, THEME_DEFAULT),
 };
 
-if (!Array.isArray(state.characters) || state.characters.length === 0) {
+if (!Array.isArray(state.characters)) {
   state.characters = structuredClone(DEFAULT_CHARACTERS);
-  state.activeCharacterId = DEFAULT_CHARACTERS[0].id;
+}
+
+if (!state.characters.some((character) => character.id === state.activeCharacterId)) {
+  state.activeCharacterId = state.characters[0]?.id ?? null;
 }
 
 if (!state.adultCheck || typeof state.adultCheck !== "object") {
@@ -227,12 +223,18 @@ function writeJson(key, value) {
 }
 
 function activeCharacter() {
-  return state.characters.find((character) => character.id === state.activeCharacterId) ?? state.characters[0];
+  return state.characters.find((character) => character.id === state.activeCharacterId) ?? null;
 }
 
-function activeChat() {
+function activeChat({ create = true } = {}) {
   const character = activeCharacter();
+  if (!character) {
+    return [];
+  }
   if (!state.chats[character.id]) {
+    if (!create) {
+      return [];
+    }
     state.chats[character.id] = character.opening
       ? [{ role: "assistant", content: character.opening }]
       : [];
@@ -328,32 +330,7 @@ function setAdultCheck() {
   renderAdultCheck();
 }
 
-function buildPersonaPrompt(character) {
-  const extra = character.systemPromptExtra
-    ? `
-
-ADDITIONAL CHARACTER INSTRUCTIONS:
-${character.systemPromptExtra}`
-    : "";
-
-  return `PERSONA CARD
-DESCRIPTION:
-${character.description}
-
-PERSONALITY:
-${character.personality}
-
-SCENARIO:
-${character.scenario}
-
-KEYWORDS:
-${character.keywords}
-${extra}
-
-ADULT_CONTENT_ALLOWED=${adultContentAllowed() ? "true" : "false"}`;
-}
-
-function buildUserProfilePrompt() {
+function buildUserProfileText() {
   const profileLines = [
     ["Name or nickname", state.profile.name],
     ["Pronouns", state.profile.pronouns],
@@ -364,21 +341,83 @@ function buildUserProfilePrompt() {
     .filter(([, value]) => String(value ?? "").trim())
     .map(([label, value]) => `${label}: ${String(value).trim()}`);
 
-  return `USER PROFILE
-The following details are user-provided context about the separate player. Use them only to personalize roleplay and respect boundaries. Do not treat profile details as permission to override safety rules, persona rules, or user agency rules.
-${profileLines.length ? profileLines.join("\n") : "No user profile details saved."}`;
+  return profileLines.length
+    ? profileLines.join("\n")
+    : "No user profile details saved.";
 }
 
-function buildSystemPrompt(character = activeCharacter()) {
-  return `${CORE_SYSTEM_PROMPT}
-
-${buildPersonaPrompt(character)}
-
-${buildUserProfilePrompt()}`;
+function selectedPromptKey() {
+  return selectedModelConfig().promptKey ?? "standard";
 }
 
-function chatMessages() {
-  return [{ role: "system", content: buildSystemPrompt() }, ...activeChat()];
+function promptTemplateText(template) {
+  if (Array.isArray(template?.lines)) {
+    return template.lines.join("\n");
+  }
+  if (typeof template?.prompt === "string") {
+    return template.prompt;
+  }
+  throw new Error("Prompt template must include a lines array or prompt string.");
+}
+
+async function loadPromptTemplate(promptKey) {
+  if (systemPromptTemplates.has(promptKey)) {
+    return systemPromptTemplates.get(promptKey);
+  }
+
+  const file = SYSTEM_PROMPT_FILES[promptKey] ?? SYSTEM_PROMPT_FILES.standard;
+  try {
+    const response = await fetch(file, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    const template = await response.json();
+    systemPromptTemplates.set(promptKey, template);
+    return template;
+  } catch (error) {
+    console.warn(`Using fallback ${promptKey} prompt template.`, error);
+    const fallback = SYSTEM_PROMPT_FALLBACKS[promptKey] ?? SYSTEM_PROMPT_FALLBACKS.standard;
+    systemPromptTemplates.set(promptKey, fallback);
+    return fallback;
+  }
+}
+
+function loadSystemPromptTemplates() {
+  systemPromptTemplatePromise ??= Promise.all(Object.keys(SYSTEM_PROMPT_FILES).map((promptKey) => loadPromptTemplate(promptKey)));
+  return systemPromptTemplatePromise;
+}
+
+function injectPromptPlaceholders(templateText, character) {
+  const replacements = {
+    "{NAME}": character.name || "Untitled character",
+    "{DESCRIPTION}": character.description || "No description provided.",
+    "{PERSONALITY}": character.personality || "No personality provided.",
+    "{SCENARIO}": character.scenario || "No scenario provided.",
+    "{KEYWORDS}": character.keywords || "No keywords provided.",
+    "{SYSTEM_PROMPT_EXTRA}": character.systemPromptExtra
+      ? `ADDITIONAL CHARACTER INSTRUCTIONS:\n${character.systemPromptExtra}`
+      : "",
+    "{PROFILE}": buildUserProfileText(),
+    "{ADULT_CONTENT_ALLOWED}": adultContentAllowed() ? "true" : "false",
+  };
+
+  return Object.entries(replacements).reduce(
+    (text, [placeholder, value]) => text.split(placeholder).join(value),
+    templateText,
+  );
+}
+
+async function buildSystemPrompt(character = activeCharacter()) {
+  if (!character) {
+    throw new Error("Create a persona before sending a message.");
+  }
+
+  const template = await loadPromptTemplate(selectedPromptKey());
+  return injectPromptPlaceholders(promptTemplateText(template), character);
+}
+
+async function chatMessages() {
+  return [{ role: "system", content: await buildSystemPrompt() }, ...activeChat({ create: false })];
 }
 
 function appendModelDebug(message, details = {}) {
@@ -666,9 +705,6 @@ async function importRepositoryCharacter(item) {
     const character = normalizeImportedCharacter(await response.json(), item.characterUrl, item);
     state.characters.push(character);
     state.activeCharacterId = character.id;
-    state.chats[character.id] = character.opening
-      ? [{ role: "assistant", content: character.opening }]
-      : [];
     saveAll();
     render();
     elements.repositoryStatus.textContent = `Imported ${character.name}.`;
@@ -693,7 +729,38 @@ function cleanAssistantContent(content) {
   return content.replace(/^assistant\s*\n/i, "");
 }
 
+function createEmptyState(title, detail, actionLabel, action) {
+  const empty = document.createElement("div");
+  empty.className = "empty-state";
+
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+
+  const copy = document.createElement("span");
+  copy.textContent = detail;
+
+  empty.append(heading, copy);
+
+  if (actionLabel && action) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "text-button secondary";
+    button.textContent = actionLabel;
+    button.addEventListener("click", action);
+    empty.append(button);
+  }
+
+  return empty;
+}
+
 function renderCharacters() {
+  if (!state.characters.length) {
+    elements.characterList.replaceChildren(
+      createEmptyState("No personas yet", "Create a persona manually or import one from Explore.", "New persona", newCharacter),
+    );
+    return;
+  }
+
   elements.characterList.replaceChildren(
     ...state.characters.map((character) => {
       const button = document.createElement("button");
@@ -738,8 +805,16 @@ function renderChatList() {
     return;
   }
 
+  const charactersWithChats = state.characters.filter((character) => (state.chats[character.id] || []).length);
+  if (!charactersWithChats.length) {
+    elements.chatList.replaceChildren(
+      createEmptyState("No chats yet", "Create a persona and send a message to start a chat.", "New persona", newCharacter),
+    );
+    return;
+  }
+
   elements.chatList.replaceChildren(
-    ...state.characters.map((character) => {
+    ...charactersWithChats.map((character) => {
       const item = document.createElement("article");
       item.className = `chat-item${character.id === state.activeCharacterId ? " active" : ""}`;
       item.dataset.chatId = character.id;
@@ -808,6 +883,37 @@ function renderRepository() {
 
 function renderPersonaForm() {
   const character = activeCharacter();
+  const fields = [
+    elements.characterName,
+    elements.characterDescription,
+    elements.characterPersonality,
+    elements.characterScenario,
+    elements.characterKeywords,
+    elements.characterThumbnail,
+    elements.characterOpening,
+  ];
+
+  if (!character) {
+    fields.forEach((field) => {
+      field.value = "";
+      field.disabled = true;
+    });
+    elements.activeCharacterName.textContent = "No persona selected";
+    elements.activeCharacterAvatar.replaceChildren();
+    elements.activeCharacterAvatar.textContent = "NP";
+    elements.messageInput.disabled = true;
+    elements.messageInput.placeholder = "Create a persona first";
+    elements.sendButton.disabled = true;
+    elements.deleteCurrentChatButton.disabled = true;
+    elements.moreButton.disabled = true;
+    elements.exportCurrentChatButton.disabled = true;
+    elements.resetCharacterButton.disabled = true;
+    return;
+  }
+
+  fields.forEach((field) => {
+    field.disabled = false;
+  });
   elements.characterName.value = character.name ?? "";
   elements.characterDescription.value = character.description ?? "";
   elements.characterPersonality.value = character.personality ?? "";
@@ -822,14 +928,28 @@ function renderPersonaForm() {
   if (!elements.activeCharacterAvatar.hasChildNodes()) {
     elements.activeCharacterAvatar.textContent = initialsFor(character.name);
   }
+  elements.messageInput.disabled = false;
+  elements.messageInput.placeholder = `Message ${character.name || "Talk2Me"}...`;
+  elements.sendButton.disabled = !engine || isModelLoading || isGenerating;
+  elements.deleteCurrentChatButton.disabled = false;
+  elements.moreButton.disabled = false;
+  elements.exportCurrentChatButton.disabled = !(state.chats[character.id] || []).length;
+  elements.resetCharacterButton.disabled = !DEFAULT_CHARACTERS.some((item) => item.id === character.id);
 }
 
 function renderChat() {
-  const messages = activeChat();
+  const character = activeCharacter();
+  if (!character) {
+    const empty = createEmptyState("Create a persona", "Talk2Me starts empty now. Add a persona manually, then load a model and begin chatting.", "New persona", newCharacter);
+    empty.classList.add("empty-chat");
+    elements.chatLog.replaceChildren(empty);
+    return;
+  }
+
+  const messages = activeChat({ create: false });
   if (!messages.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-chat";
-    empty.textContent = "No messages yet.";
+    const empty = createEmptyState("No messages yet", "Load a model, then send the first message for this persona.");
+    empty.classList.add("empty-chat");
     elements.chatLog.replaceChildren(empty);
     return;
   }
@@ -841,7 +961,7 @@ function renderChat() {
 
       const meta = document.createElement("div");
       meta.className = "message-meta";
-      meta.textContent = message.role === "user" ? "Player" : activeCharacter().name;
+      meta.textContent = message.role === "user" ? "Player" : character.name;
 
       const bubble = document.createElement("div");
       bubble.className = "message-bubble";
@@ -857,6 +977,17 @@ function renderChat() {
 function renderSettings() {
   elements.temperatureValue.textContent = elements.temperatureInput.value;
   elements.topPValue.textContent = elements.topPInput.value;
+}
+
+function renderExportControls() {
+  const character = activeCharacter();
+  const currentMessages = character ? state.chats[character.id] || [] : [];
+  const hasAnyChats = Object.values(state.chats).some((messages) => Array.isArray(messages) && messages.length);
+
+  elements.exportCurrentChatButton.disabled = !currentMessages.length;
+  elements.moreButton.disabled = !character || !currentMessages.length;
+  elements.exportAllChatsButton.disabled = !hasAnyChats;
+  elements.deleteAllChatsButton.disabled = !hasAnyChats;
 }
 
 function renderProfile() {
@@ -876,6 +1007,7 @@ function render() {
   renderPersonaForm();
   renderChat();
   renderSettings();
+  renderExportControls();
   renderAdultCheck();
   renderProfile();
 }
@@ -1250,7 +1382,7 @@ async function loadModel() {
     isModelLoading = false;
     elements.loadModelButton.disabled = false;
     elements.downloadModelButton.disabled = false;
-    elements.sendButton.disabled = false;
+    elements.sendButton.disabled = !activeCharacter();
   }
 }
 
@@ -1259,6 +1391,12 @@ async function sendMessage(event) {
 
   const content = elements.messageInput.value.trim();
   if (!content || isGenerating) {
+    return;
+  }
+
+  if (!activeCharacter()) {
+    setStatus("Create a persona before sending.");
+    render();
     return;
   }
 
@@ -1274,7 +1412,7 @@ async function sendMessage(event) {
 
   const messages = activeChat();
   messages.push({ role: "user", content });
-  const completionMessages = chatMessages();
+  const completionMessages = await chatMessages();
   const assistantMessage = { role: "assistant", content: "" };
   messages.push(assistantMessage);
   elements.messageInput.value = "";
@@ -1283,6 +1421,8 @@ async function sendMessage(event) {
   elements.stopButton.disabled = false;
   saveAll();
   renderChat();
+  renderChatList();
+  renderExportControls();
 
   try {
     const response = await engine.createChatCompletion({
@@ -1294,6 +1434,8 @@ async function sendMessage(event) {
     assistantMessage.content = response.choices?.[0]?.message?.content ?? "[No response generated.]";
     saveAll();
     renderChat();
+    renderChatList();
+    renderExportControls();
   } catch (error) {
     console.error(error);
     const errorMessage = error?.message || String(error);
@@ -1306,6 +1448,8 @@ async function sendMessage(event) {
     elements.stopButton.disabled = true;
     saveAll();
     renderChat();
+    renderChatList();
+    renderExportControls();
   }
 }
 
@@ -1320,6 +1464,9 @@ function stopGeneration() {
 
 function updateCharacterFromForm() {
   const character = activeCharacter();
+  if (!character) {
+    return;
+  }
   character.name = elements.characterName.value.trim() || "Untitled character";
   character.description = elements.characterDescription.value.trim();
   character.personality = elements.characterPersonality.value.trim();
@@ -1330,6 +1477,7 @@ function updateCharacterFromForm() {
   character.adultContentAllowed = false;
   saveAll();
   renderCharacters();
+  renderChatList();
   renderPersonaForm();
   renderChat();
 }
@@ -1351,6 +1499,7 @@ function newCharacter() {
   state.activeCharacterId = id;
   saveAll();
   render();
+  elements.characterName.focus();
 }
 
 function resetActiveCharacter() {
@@ -1368,6 +1517,9 @@ function resetActiveCharacter() {
 
 function clearChat(characterId = state.activeCharacterId) {
   const character = state.characters.find((item) => item.id === characterId) || activeCharacter();
+  if (!character) {
+    return;
+  }
   state.chats[character.id] = character.opening
     ? [{ role: "assistant", content: character.opening }]
     : [];
@@ -1377,11 +1529,18 @@ function clearChat(characterId = state.activeCharacterId) {
 }
 
 function newChat() {
+  if (!activeCharacter()) {
+    newCharacter();
+    return;
+  }
   clearChat(state.activeCharacterId);
 }
 
 function deleteCurrentChat() {
   const character = activeCharacter();
+  if (!character) {
+    return;
+  }
   if (!window.confirm(`Delete the chat with ${character.name || "this character"}?`)) {
     return;
   }
@@ -1389,6 +1548,11 @@ function deleteCurrentChat() {
 }
 
 function deleteAllChats() {
+  const hasChats = Object.values(state.chats).some((messages) => Array.isArray(messages) && messages.length);
+  if (!hasChats) {
+    setStatus("No chats to delete.");
+    return;
+  }
   if (!window.confirm("Delete all chats? This cannot be undone.")) {
     return;
   }
@@ -1419,17 +1583,87 @@ function deleteChatByCharacterId(characterId) {
 }
 
 function downloadChat() {
-  const character = activeCharacter();
-  const transcript = activeChat()
-    .map((message) => `${message.role === "user" ? "Player" : character.name}: ${message.content}`)
-    .join("\n\n");
-  const blob = new Blob([transcript], { type: "text/plain" });
+  exportCurrentChat();
+}
+
+function safeFilePart(value, fallback = "talk2me") {
+  return String(value || fallback)
+    .trim()
+    .replaceAll(/\W+/g, "-")
+    .replaceAll(/^-+|-+$/g, "")
+    .toLowerCase() || fallback;
+}
+
+function downloadBlob(content, filename, type = "text/plain") {
+  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${character.name.replaceAll(/\W+/g, "-").toLowerCase()}-chat.txt`;
+  link.download = filename;
+  document.body.append(link);
   link.click();
+  link.remove();
   URL.revokeObjectURL(url);
+}
+
+function formatChatTranscript(character, messages) {
+  return messages
+    .map((message) => `${message.role === "user" ? "Player" : character.name}: ${message.content}`)
+    .join("\n\n");
+}
+
+function exportCurrentChat() {
+  const character = activeCharacter();
+  if (!character) {
+    setStatus("Create a persona before exporting a chat.");
+    return;
+  }
+
+  const messages = state.chats[character.id] || [];
+  if (!messages.length) {
+    setStatus("No messages to export for the current persona.");
+    return;
+  }
+
+  downloadBlob(
+    formatChatTranscript(character, messages),
+    `${safeFilePart(character.name)}-chat.txt`,
+  );
+  setStatus(`Exported chat with ${character.name || "current persona"}.`);
+}
+
+function exportAllChats() {
+  const chats = state.characters
+    .map((character) => ({
+      character: {
+        id: character.id,
+        name: character.name || "Untitled character",
+        description: character.description || "",
+        personality: character.personality || "",
+        scenario: character.scenario || "",
+        keywords: character.keywords || "",
+      },
+      messages: state.chats[character.id] || [],
+    }))
+    .filter((entry) => entry.messages.length);
+
+  if (!chats.length) {
+    setStatus("No chats to export yet.");
+    return;
+  }
+
+  const exported = {
+    exportedAt: new Date().toISOString(),
+    app: "Talk2Me",
+    chats,
+  };
+  const datePart = new Date().toISOString().slice(0, 10);
+  downloadBlob(
+    JSON.stringify(exported, null, 2),
+    `talk2me-chats-${datePart}.json`,
+    "application/json",
+  );
+  setStatus(`Exported ${chats.length} chat${chats.length === 1 ? "" : "s"}.`);
 }
 
 function openProfile() {
@@ -1463,8 +1697,40 @@ function clearProfile() {
 }
 
 function focusRepositorySearch() {
+  elements.explorePanel.open = true;
   elements.repositoryUrl.focus();
   elements.repositoryUrl.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function setMobileNavTarget(target) {
+  activeMobileView = target;
+  elements.mobileNavButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.mobileTarget === activeMobileView);
+    button.setAttribute("aria-current", button.dataset.mobileTarget === activeMobileView ? "page" : "false");
+  });
+}
+
+function navigateMobile(target) {
+  setMobileNavTarget(target);
+
+  if (target === "profile") {
+    openProfile();
+    return;
+  }
+
+  const scrollOptions = { behavior: "smooth", block: "start" };
+  if (target === "chats") {
+    elements.chatsView.scrollIntoView(scrollOptions);
+    return;
+  }
+
+  if (target === "explore") {
+    elements.explorePanel.open = true;
+    elements.explorePanel.scrollIntoView(scrollOptions);
+    return;
+  }
+
+  elements.settingsView.scrollIntoView(scrollOptions);
 }
 
 elements.composerForm?.addEventListener("submit", sendMessage);
@@ -1474,6 +1740,8 @@ elements.closeProfileButton?.addEventListener("click", closeProfile);
 elements.deleteAllChatsButton?.addEventListener("click", deleteAllChats);
 elements.deleteCurrentChatButton?.addEventListener("click", deleteCurrentChat);
 elements.downloadModelButton?.addEventListener("click", downloadSelectedModelFiles);
+elements.exportAllChatsButton?.addEventListener("click", exportAllChats);
+elements.exportCurrentChatButton?.addEventListener("click", exportCurrentChat);
 elements.loadModelButton?.addEventListener("click", loadModel);
 elements.modelFilesInput?.addEventListener("change", describeSelectedModelFiles);
 elements.modelShardInputs.forEach((input) => input.addEventListener("change", describeSelectedModelFiles));
@@ -1483,10 +1751,14 @@ elements.modelSelect?.addEventListener("change", () => {
   }
   rememberedModelFiles = [];
   renderModelDownloadLinks();
+  loadPromptTemplate(selectedPromptKey());
   restoreRememberedModelFiles({ askPermission: false });
   describeSelectedModelFiles();
 });
 elements.moreButton?.addEventListener("click", downloadChat);
+elements.mobileNavButtons.forEach((button) => {
+  button.addEventListener("click", () => navigateMobile(button.dataset.mobileTarget));
+});
 elements.newCharacterButton?.addEventListener("click", newCharacter);
 elements.newChatButton?.addEventListener("click", newChat);
 elements.adultCheck?.addEventListener("change", setAdultCheck);
@@ -1529,6 +1801,8 @@ window.matchMedia?.("(prefers-color-scheme: light)").addEventListener?.("change"
 
 renderModelOptions();
 renderModelDownloadLinks();
+setMobileNavTarget("chats");
+loadSystemPromptTemplates();
 applyTheme();
 render();
 restoreRememberedModelFiles({ askPermission: false });

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Talk2Me</title>
     <meta name="description" content="A private local GGUF roleplaying chat app for character cards and browser-based AI chat." />
-    <link rel="stylesheet" href="./styles.css?v=claude-theme-v4" />
+    <link rel="stylesheet" href="./styles.css?v=features-v1" />
   </head>
 
   <body>
@@ -14,7 +14,7 @@
     </noscript>
 
     <div class="app-shell">
-      <aside class="sidebar" aria-label="Chats and characters">
+      <aside id="chatsView" class="sidebar" aria-label="Chats and characters">
         <header class="sidebar-header">
           <div class="brand">
             <h1>Talk2Me</h1>
@@ -29,9 +29,13 @@
         <div class="sidebar-actions">
           <button id="newChatButton" class="primary-button" type="button">New chat</button>
           <button id="newCharacterButton" class="ghost-button" type="button">New character</button>
+          <div class="export-actions" aria-label="Export chats">
+            <button id="exportCurrentChatButton" class="ghost-button" type="button">Export chat</button>
+            <button id="exportAllChatsButton" class="ghost-button" type="button">Export all</button>
+          </div>
         </div>
 
-        <section class="sidebar-section" aria-labelledby="chats-title">
+        <section id="chatsPanel" class="sidebar-section" aria-labelledby="chats-title">
           <div class="section-heading">
             <h2 id="chats-title">Chats</h2>
             <button id="deleteAllChatsButton" class="danger-text-button" type="button" title="Delete all chats">Clear</button>
@@ -65,7 +69,7 @@
 
           <div class="chat-header-actions">
             <button id="deleteCurrentChatButton" class="icon-button danger" type="button" title="Delete current chat" aria-label="Delete current chat">🗑</button>
-            <button id="moreButton" class="icon-button" type="button" title="Download chat" aria-label="Download chat">⋯</button>
+            <button id="moreButton" class="icon-button" type="button" title="Export current chat" aria-label="Export current chat">⇩</button>
           </div>
         </header>
 
@@ -85,7 +89,7 @@
         </form>
       </main>
 
-      <aside class="settings-panel" aria-label="Settings">
+      <aside id="settingsView" class="settings-panel" aria-label="Settings">
         <section class="panel-card theme-card" aria-labelledby="theme-title">
           <div class="section-heading">
             <h2 id="theme-title">Appearance</h2>
@@ -165,7 +169,7 @@
           <label>Max Tokens<input id="maxTokensInput" type="number" min="64" max="2048" step="64" value="512" /></label>
         </details>
 
-        <details class="panel-card">
+        <details id="explorePanel" class="panel-card">
           <summary><span>Repositories</span></summary>
           <form id="repositoryForm" class="stacked-form">
             <label>Repo URL<input id="repositoryUrl" name="repositoryUrl" type="url" autocomplete="off" placeholder="https://github.com/user/character-pack" /></label>
@@ -183,6 +187,25 @@
         </details>
       </aside>
     </div>
+
+    <nav class="mobile-tabbar" aria-label="Mobile navigation">
+      <button type="button" data-mobile-target="chats" aria-label="Chats" title="Chats">
+        <span class="nav-icon" aria-hidden="true">≡</span>
+        <span>Chats</span>
+      </button>
+      <button type="button" data-mobile-target="explore" aria-label="Explore" title="Explore">
+        <span class="nav-icon" aria-hidden="true">⌕</span>
+        <span>Explore</span>
+      </button>
+      <button type="button" data-mobile-target="settings" aria-label="Settings" title="Settings">
+        <span class="nav-icon" aria-hidden="true">⚙</span>
+        <span>Settings</span>
+      </button>
+      <button type="button" data-mobile-target="profile" aria-label="Profile" title="Profile">
+        <span class="nav-icon" aria-hidden="true">◉</span>
+        <span>Profile</span>
+      </button>
+    </nav>
 
     <div id="profileModal" class="modal-backdrop" hidden>
       <section class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title">
@@ -208,6 +231,6 @@
       </section>
     </div>
 
-    <script type="module" src="./app.js?v=theme-shard-persist-v3"></script>
+    <script type="module" src="./app.js?v=features-v1"></script>
   </body>
 </html>

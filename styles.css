@@ -100,6 +100,7 @@ h2 { font-size: 0.88rem; }
 .brand p { margin-top: 3px; font-size: 0.76rem; }
 
 .sidebar-actions { display: grid; gap: 8px; }
+.export-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .sidebar-section { min-height: 0; }
 .sidebar-section.grow { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 .character-list, .chat-list, .repo-character-list { display: grid; gap: 6px; overflow: auto; padding-right: 2px; }
@@ -150,6 +151,24 @@ h2 { font-size: 0.88rem; }
   text-align: center;
 }
 .empty-chat h2 { margin-bottom: 8px; font-size: 1.3rem; }
+.empty-state {
+  display: grid;
+  gap: 8px;
+  place-items: start;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 13px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.empty-state strong {
+  color: var(--text);
+  font-size: 0.86rem;
+}
+.empty-chat.empty-state {
+  place-items: center;
+}
 
 .composer {
   display: grid;
@@ -340,6 +359,10 @@ pre { max-height: 170px; overflow: auto; white-space: pre-wrap; color: var(--mut
 }
 .modal-header { margin-bottom: 14px; }
 
+.mobile-tabbar {
+  display: none;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -355,9 +378,48 @@ pre { max-height: 170px; overflow: auto; white-space: pre-wrap; color: var(--mut
 }
 
 @media (max-width: 760px) {
+  body { padding-bottom: 72px; }
   .app-shell { grid-template-columns: 1fr; height: auto; min-height: 100vh; }
   .sidebar, .settings-panel { position: static; width: auto; max-height: none; }
   .main-chat { min-height: 72vh; }
   .chat-log { padding: 20px 16px; }
   .composer { margin: 0 12px 12px; }
+  .sidebar, .main-chat, .settings-panel, #explorePanel { scroll-margin-top: 12px; scroll-margin-bottom: 84px; }
+  .mobile-tabbar {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--shell), transparent 4%);
+    box-shadow: var(--shadow);
+  }
+  .mobile-tabbar button {
+    display: grid;
+    place-items: center;
+    gap: 2px;
+    min-height: 48px;
+    border: 1px solid transparent;
+    border-radius: 13px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 750;
+  }
+  .mobile-tabbar button.active {
+    border-color: rgb(var(--accent-rgb) / 0.32);
+    background: rgb(var(--accent-rgb) / 0.14);
+    color: var(--text);
+  }
+  .nav-icon {
+    display: block;
+    font-size: 1.05rem;
+    line-height: 1;
+  }
 }
