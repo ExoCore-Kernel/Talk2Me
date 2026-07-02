@@ -107,6 +107,8 @@ const elements = {
   clearProfileButton: document.querySelector("#clearProfileButton"),
   closeProfileButton: document.querySelector("#closeProfileButton"),
   composerForm: document.querySelector("#composerForm"),
+  disclaimerAcceptButton: document.querySelector("#disclaimerAcceptButton"),
+  disclaimerModal: document.querySelector("#disclaimerModal"),
   loadRepositoryButton: document.querySelector("#loadRepositoryButton"),
   darkThemeButton: document.querySelector("#darkThemeButton"),
   deleteAllChatsButton: document.querySelector("#deleteAllChatsButton"),
@@ -389,7 +391,7 @@ function loadSystemPromptTemplates() {
 
 function injectPromptPlaceholders(templateText, character) {
   const replacements = {
-    "{NAME}": character.name || "Untitled character",
+    "{NAME}": displayCharacterName(character),
     "{DESCRIPTION}": character.description || "No description provided.",
     "{PERSONALITY}": character.personality || "No personality provided.",
     "{SCENARIO}": character.scenario || "No scenario provided.",
@@ -653,11 +655,15 @@ function createThumbnail(url, label, className) {
 }
 
 function initialsFor(value) {
-  const parts = String(value || "You")
+  const parts = String(value || "Untitled")
     .trim()
     .split(/\s+/)
     .filter(Boolean);
-  return (parts[0]?.[0] ?? "Y").concat(parts[1]?.[0] ?? "").toUpperCase();
+  return (parts[0]?.[0] ?? "U").concat(parts[1]?.[0] ?? "").toUpperCase();
+}
+
+function displayCharacterName(character) {
+  return String(character?.name ?? "").trim() || "Untitled character";
 }
 
 async function loadRepository(event) {
@@ -772,13 +778,13 @@ function renderCharacters() {
       summary.className = "character-summary";
 
       const title = document.createElement("strong");
-      title.textContent = character.name || "Untitled character";
+      title.textContent = displayCharacterName(character);
 
       const subtitle = document.createElement("span");
       subtitle.textContent = character.keywords || character.description || "No keywords yet";
 
       summary.append(title, subtitle);
-      button.append(createThumbnail(character.thumbnail, character.name, "character-thumb"), summary);
+      button.append(createThumbnail(character.thumbnail, displayCharacterName(character), "character-thumb"), summary);
       button.addEventListener("click", () => {
         state.activeCharacterId = character.id;
         saveAll();
@@ -796,7 +802,7 @@ function chatPreviewFor(character) {
   if (!last) {
     return "No messages yet";
   }
-  const prefix = last.role === "user" ? "You: " : `${character.name || "AI"}: `;
+  const prefix = last.role === "user" ? "You: " : `${displayCharacterName(character)}: `;
   return `${prefix}${last.content}`;
 }
 
@@ -825,7 +831,7 @@ function renderChatList() {
 
       const title = document.createElement("span");
       title.className = "chat-title-text";
-      title.textContent = character.name || "Untitled character";
+      title.textContent = displayCharacterName(character);
 
       const preview = document.createElement("span");
       preview.className = "chat-preview";
@@ -835,11 +841,11 @@ function renderChatList() {
       deleteButton.type = "button";
       deleteButton.className = "delete-chat-button";
       deleteButton.title = "Delete chat";
-      deleteButton.setAttribute("aria-label", `Delete chat with ${character.name || "this character"}`);
+      deleteButton.setAttribute("aria-label", `Delete chat with ${displayCharacterName(character)}`);
       deleteButton.textContent = "×";
 
       main.append(title, preview);
-      item.append(createThumbnail(character.thumbnail, character.name, "character-thumb"), main, deleteButton);
+      item.append(createThumbnail(character.thumbnail, displayCharacterName(character), "character-thumb"), main, deleteButton);
       return item;
     }),
   );
@@ -921,20 +927,34 @@ function renderPersonaForm() {
   elements.characterKeywords.value = character.keywords ?? "";
   elements.characterThumbnail.value = character.thumbnail ?? "";
   elements.characterOpening.value = character.opening ?? "";
-  elements.activeCharacterName.textContent = character.name || "Untitled character";
-  elements.activeCharacterAvatar.replaceChildren(
-    ...createThumbnail(character.thumbnail, character.name, "active-avatar-inner").childNodes,
-  );
-  if (!elements.activeCharacterAvatar.hasChildNodes()) {
-    elements.activeCharacterAvatar.textContent = initialsFor(character.name);
-  }
+  renderActiveCharacterHeader();
   elements.messageInput.disabled = false;
-  elements.messageInput.placeholder = `Message ${character.name || "Talk2Me"}...`;
   elements.sendButton.disabled = !engine || isModelLoading || isGenerating;
   elements.deleteCurrentChatButton.disabled = false;
   elements.moreButton.disabled = false;
   elements.exportCurrentChatButton.disabled = !(state.chats[character.id] || []).length;
   elements.resetCharacterButton.disabled = !DEFAULT_CHARACTERS.some((item) => item.id === character.id);
+}
+
+function renderActiveCharacterHeader() {
+  const character = activeCharacter();
+  if (!character) {
+    elements.activeCharacterName.textContent = "No persona selected";
+    elements.activeCharacterAvatar.replaceChildren();
+    elements.activeCharacterAvatar.textContent = "NP";
+    elements.messageInput.placeholder = "Create a persona first";
+    return;
+  }
+
+  const displayName = displayCharacterName(character);
+  elements.activeCharacterName.textContent = displayName;
+  elements.activeCharacterAvatar.replaceChildren(
+    ...createThumbnail(character.thumbnail, displayName, "active-avatar-inner").childNodes,
+  );
+  if (!elements.activeCharacterAvatar.hasChildNodes()) {
+    elements.activeCharacterAvatar.textContent = initialsFor(displayName);
+  }
+  elements.messageInput.placeholder = `Message ${displayName}...`;
 }
 
 function renderChat() {
@@ -961,7 +981,7 @@ function renderChat() {
 
       const meta = document.createElement("div");
       meta.className = "message-meta";
-      meta.textContent = message.role === "user" ? "Player" : character.name;
+      meta.textContent = message.role === "user" ? "Player" : displayCharacterName(character);
 
       const bubble = document.createElement("div");
       bubble.className = "message-bubble";
@@ -1467,18 +1487,18 @@ function updateCharacterFromForm() {
   if (!character) {
     return;
   }
-  character.name = elements.characterName.value.trim() || "Untitled character";
-  character.description = elements.characterDescription.value.trim();
-  character.personality = elements.characterPersonality.value.trim();
-  character.scenario = elements.characterScenario.value.trim();
-  character.keywords = elements.characterKeywords.value.trim();
+  character.name = elements.characterName.value;
+  character.description = elements.characterDescription.value;
+  character.personality = elements.characterPersonality.value;
+  character.scenario = elements.characterScenario.value;
+  character.keywords = elements.characterKeywords.value;
   character.thumbnail = elements.characterThumbnail.value.trim();
-  character.opening = elements.characterOpening.value.trim();
+  character.opening = elements.characterOpening.value;
   character.adultContentAllowed = false;
   saveAll();
+  renderActiveCharacterHeader();
   renderCharacters();
   renderChatList();
-  renderPersonaForm();
   renderChat();
 }
 
@@ -1486,7 +1506,7 @@ function newCharacter() {
   const id = `character-${Date.now()}`;
   state.characters.push({
     id,
-    name: "New Persona",
+    name: "",
     description: "",
     personality: "",
     scenario: "",
@@ -1541,7 +1561,7 @@ function deleteCurrentChat() {
   if (!character) {
     return;
   }
-  if (!window.confirm(`Delete the chat with ${character.name || "this character"}?`)) {
+  if (!window.confirm(`Delete the chat with ${displayCharacterName(character)}?`)) {
     return;
   }
   clearChat(character.id);
@@ -1576,7 +1596,7 @@ function deleteChatByCharacterId(characterId) {
   if (!character) {
     return;
   }
-  if (!window.confirm(`Delete the chat with ${character.name || "this character"}?`)) {
+  if (!window.confirm(`Delete the chat with ${displayCharacterName(character)}?`)) {
     return;
   }
   clearChat(characterId);
@@ -1608,7 +1628,7 @@ function downloadBlob(content, filename, type = "text/plain") {
 
 function formatChatTranscript(character, messages) {
   return messages
-    .map((message) => `${message.role === "user" ? "Player" : character.name}: ${message.content}`)
+    .map((message) => `${message.role === "user" ? "Player" : displayCharacterName(character)}: ${message.content}`)
     .join("\n\n");
 }
 
@@ -1627,9 +1647,9 @@ function exportCurrentChat() {
 
   downloadBlob(
     formatChatTranscript(character, messages),
-    `${safeFilePart(character.name)}-chat.txt`,
+    `${safeFilePart(displayCharacterName(character))}-chat.txt`,
   );
-  setStatus(`Exported chat with ${character.name || "current persona"}.`);
+  setStatus(`Exported chat with ${displayCharacterName(character)}.`);
 }
 
 function exportAllChats() {
@@ -1637,7 +1657,7 @@ function exportAllChats() {
     .map((character) => ({
       character: {
         id: character.id,
-        name: character.name || "Untitled character",
+        name: displayCharacterName(character),
         description: character.description || "",
         personality: character.personality || "",
         scenario: character.scenario || "",
@@ -1674,6 +1694,10 @@ function openProfile() {
 
 function closeProfile() {
   elements.profileModal.hidden = true;
+}
+
+function closeDisclaimer() {
+  elements.disclaimerModal.hidden = true;
 }
 
 function saveProfile(event) {
@@ -1739,6 +1763,7 @@ elements.clearProfileButton?.addEventListener("click", clearProfile);
 elements.closeProfileButton?.addEventListener("click", closeProfile);
 elements.deleteAllChatsButton?.addEventListener("click", deleteAllChats);
 elements.deleteCurrentChatButton?.addEventListener("click", deleteCurrentChat);
+elements.disclaimerAcceptButton?.addEventListener("click", closeDisclaimer);
 elements.downloadModelButton?.addEventListener("click", downloadSelectedModelFiles);
 elements.exportAllChatsButton?.addEventListener("click", exportAllChats);
 elements.exportCurrentChatButton?.addEventListener("click", exportCurrentChat);
