@@ -74,6 +74,11 @@ const PROFILE_DEFAULT = {
   boundaries: "",
 };
 
+const THEME_DEFAULT = {
+  mode: "dark",
+  accent: "#7c4de3",
+};
+
 const DEFAULT_CHARACTERS = [
   {
     id: "liora",
@@ -95,6 +100,7 @@ const STORAGE_KEYS = {
   activeCharacterId: "talk2me.activeCharacterId.v1",
   adultCheck: "talk2me.adultCheck.v1",
   profile: "talk2me.profile.v1",
+  theme: "talk2me.theme.v1",
 };
 
 const elements = {
@@ -102,6 +108,7 @@ const elements = {
   activeCharacterName: document.querySelector("#activeCharacterName"),
   adultCheck: document.querySelector("#adultCheck"),
   adultStatus: document.querySelector("#adultStatus"),
+  accentColorInput: document.querySelector("#accentColorInput"),
   backButton: document.querySelector("#backButton"),
   characterDescription: document.querySelector("#characterDescription"),
   characterKeywords: document.querySelector("#characterKeywords"),
@@ -111,12 +118,17 @@ const elements = {
   characterPersonality: document.querySelector("#characterPersonality"),
   characterScenario: document.querySelector("#characterScenario"),
   characterThumbnail: document.querySelector("#characterThumbnail"),
+  chatList: document.querySelector("#chatList"),
   chatLog: document.querySelector("#chatLog"),
   clearProfileButton: document.querySelector("#clearProfileButton"),
   closeProfileButton: document.querySelector("#closeProfileButton"),
   composerForm: document.querySelector("#composerForm"),
   loadRepositoryButton: document.querySelector("#loadRepositoryButton"),
+  darkThemeButton: document.querySelector("#darkThemeButton"),
+  deleteAllChatsButton: document.querySelector("#deleteAllChatsButton"),
+  deleteCurrentChatButton: document.querySelector("#deleteCurrentChatButton"),
   downloadModelButton: document.querySelector("#downloadModelButton"),
+  lightThemeButton: document.querySelector("#lightThemeButton"),
   loadModelButton: document.querySelector("#loadModelButton"),
   loadProgress: document.querySelector("#loadProgress"),
   maxTokensInput: document.querySelector("#maxTokensInput"),
@@ -130,6 +142,7 @@ const elements = {
   modelStatus: document.querySelector("#modelStatus"),
   moreButton: document.querySelector("#moreButton"),
   newCharacterButton: document.querySelector("#newCharacterButton"),
+  newChatButton: document.querySelector("#newChatButton"),
   personaForm: document.querySelector("#personaForm"),
   profileAbout: document.querySelector("#profileAbout"),
   profileBoundaries: document.querySelector("#profileBoundaries"),
@@ -145,10 +158,14 @@ const elements = {
   repositoryMeta: document.querySelector("#repositoryMeta"),
   repositoryStatus: document.querySelector("#repositoryStatus"),
   repositoryUrl: document.querySelector("#repositoryUrl"),
+  rememberModelFilesButton: document.querySelector("#rememberModelFilesButton"),
   resetCharacterButton: document.querySelector("#resetCharacterButton"),
+  restoreModelFilesButton: document.querySelector("#restoreModelFilesButton"),
   searchButton: document.querySelector("#searchButton"),
   sendButton: document.querySelector("#sendButton"),
   stopButton: document.querySelector("#stopButton"),
+  swatchButtons: Array.from(document.querySelectorAll(".swatch")),
+  systemThemeButton: document.querySelector("#systemThemeButton"),
   temperatureInput: document.querySelector("#temperatureInput"),
   temperatureValue: document.querySelector("#temperatureValue"),
   topPInput: document.querySelector("#topPInput"),
@@ -167,6 +184,7 @@ const state = {
   chats: readJson(STORAGE_KEYS.chats, {}),
   profile: readJson(STORAGE_KEYS.profile, PROFILE_DEFAULT),
   repository: null,
+  theme: readJson(STORAGE_KEYS.theme, THEME_DEFAULT),
 };
 
 if (!Array.isArray(state.characters) || state.characters.length === 0) {
@@ -187,6 +205,13 @@ state.profile = {
   ...PROFILE_DEFAULT,
   ...(state.profile && typeof state.profile === "object" ? state.profile : {}),
 };
+
+state.theme = {
+  ...THEME_DEFAULT,
+  ...(state.theme && typeof state.theme === "object" ? state.theme : {}),
+};
+
+let rememberedModelFiles = [];
 
 function readJson(key, fallback) {
   try {
@@ -221,10 +246,73 @@ function saveAll() {
   writeJson(STORAGE_KEYS.activeCharacterId, state.activeCharacterId);
   writeJson(STORAGE_KEYS.adultCheck, state.adultCheck);
   writeJson(STORAGE_KEYS.profile, state.profile);
+  writeJson(STORAGE_KEYS.theme, state.theme);
 }
 
 function adultContentAllowed() {
   return state.adultCheck.checked === true;
+}
+
+
+function hexToRgbTriplet(hex) {
+  const normalized = String(hex || THEME_DEFAULT.accent).replace("#", "").trim();
+  const value = normalized.length === 3
+    ? normalized.split("").map((part) => part + part).join("")
+    : normalized;
+  const number = Number.parseInt(value, 16);
+  if (!Number.isFinite(number)) {
+    return "124 77 227";
+  }
+  return `${(number >> 16) & 255} ${(number >> 8) & 255} ${number & 255}`;
+}
+
+function resolvedThemeMode() {
+  if (state.theme.mode === "system") {
+    return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  }
+  return state.theme.mode === "light" ? "light" : "dark";
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = resolvedThemeMode();
+  document.documentElement.style.setProperty("--accent", state.theme.accent);
+  document.documentElement.style.setProperty("--accent-rgb", hexToRgbTriplet(state.theme.accent));
+
+  if (elements.accentColorInput) {
+    elements.accentColorInput.value = state.theme.accent;
+  }
+
+  const buttons = [elements.lightThemeButton, elements.darkThemeButton, elements.systemThemeButton].filter(Boolean);
+  buttons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.mode === state.theme.mode);
+    button.setAttribute("aria-pressed", String(button.dataset.mode === state.theme.mode));
+  });
+
+  elements.swatchButtons?.forEach((button) => {
+    button.classList.toggle("active", button.dataset.accent?.toLowerCase() === state.theme.accent.toLowerCase());
+  });
+}
+
+function setThemeMode(mode) {
+  state.theme.mode = ["light", "dark", "system"].includes(mode) ? mode : "dark";
+  saveAll();
+  applyTheme();
+}
+
+function setAccentColor(accent) {
+  if (!/^#[0-9a-f]{6}$/i.test(accent)) {
+    return;
+  }
+  state.theme.accent = accent.toLowerCase();
+  saveAll();
+  applyTheme();
+}
+
+function renderSidebarModelState(text) {
+  const sidebarModelState = document.querySelector("#sidebarModelState");
+  if (sidebarModelState) {
+    sidebarModelState.textContent = text;
+  }
 }
 
 function renderAdultCheck() {
@@ -313,10 +401,15 @@ function appendModelDebug(message, details = {}) {
   elements.modelDebugLog.scrollTop = elements.modelDebugLog.scrollHeight;
 }
 
-function setStatus(text, progress = elements.loadProgress.value) {
-  elements.modelStatus.textContent = text;
-  elements.loadProgress.value = Number(progress) || 0;
-  appendModelDebug(text, { progress: elements.loadProgress.value });
+function setStatus(text, progress = elements.loadProgress?.value ?? 0) {
+  if (elements.modelStatus) {
+    elements.modelStatus.textContent = text;
+  }
+  if (elements.loadProgress) {
+    elements.loadProgress.value = Number(progress) || 0;
+  }
+  renderSidebarModelState(progress >= 1 ? "Model ready" : text.includes("No local") || text.includes("Choose") ? "No model loaded" : "Loading / setup");
+  appendModelDebug(text, { progress: elements.loadProgress?.value ?? 0 });
 }
 
 function formatDuration(milliseconds) {
@@ -629,6 +722,54 @@ function renderCharacters() {
   );
 }
 
+
+function chatPreviewFor(character) {
+  const messages = state.chats[character.id] || [];
+  const last = [...messages].reverse().find((message) => message.content?.trim());
+  if (!last) {
+    return "No messages yet";
+  }
+  const prefix = last.role === "user" ? "You: " : `${character.name || "AI"}: `;
+  return `${prefix}${last.content}`;
+}
+
+function renderChatList() {
+  if (!elements.chatList) {
+    return;
+  }
+
+  elements.chatList.replaceChildren(
+    ...state.characters.map((character) => {
+      const item = document.createElement("article");
+      item.className = `chat-item${character.id === state.activeCharacterId ? " active" : ""}`;
+      item.dataset.chatId = character.id;
+
+      const main = document.createElement("button");
+      main.type = "button";
+      main.className = "chat-main";
+
+      const title = document.createElement("span");
+      title.className = "chat-title-text";
+      title.textContent = character.name || "Untitled character";
+
+      const preview = document.createElement("span");
+      preview.className = "chat-preview";
+      preview.textContent = chatPreviewFor(character);
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "delete-chat-button";
+      deleteButton.title = "Delete chat";
+      deleteButton.setAttribute("aria-label", `Delete chat with ${character.name || "this character"}`);
+      deleteButton.textContent = "×";
+
+      main.append(title, preview);
+      item.append(createThumbnail(character.thumbnail, character.name, "character-thumb"), main, deleteButton);
+      return item;
+    }),
+  );
+}
+
 function renderRepository() {
   if (!state.repository) {
     elements.repositoryMeta.hidden = true;
@@ -728,7 +869,9 @@ function renderProfile() {
 }
 
 function render() {
+  applyTheme();
   renderCharacters();
+  renderChatList();
   renderRepository();
   renderPersonaForm();
   renderChat();
@@ -782,8 +925,133 @@ function isGgufFile(file) {
   return file?.name?.toLowerCase().endsWith(".gguf");
 }
 
+
+const SHARD_HANDLE_DB_NAME = "talk2me-shard-handles";
+const SHARD_HANDLE_STORE = "models";
+
+function openShardHandleDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(SHARD_HANDLE_DB_NAME, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(SHARD_HANDLE_STORE);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveRememberedShardHandles(modelId, handles) {
+  const db = await openShardHandleDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(SHARD_HANDLE_STORE, "readwrite");
+    tx.objectStore(SHARD_HANDLE_STORE).put(handles, modelId);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+async function readRememberedShardHandles(modelId) {
+  const db = await openShardHandleDb();
+  const handles = await new Promise((resolve, reject) => {
+    const tx = db.transaction(SHARD_HANDLE_STORE, "readonly");
+    const request = tx.objectStore(SHARD_HANDLE_STORE).get(modelId);
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return Array.isArray(handles) ? handles : [];
+}
+
+async function permissionForHandle(handle, ask = false) {
+  if (!handle?.queryPermission) {
+    return "granted";
+  }
+  const query = await handle.queryPermission({ mode: "read" });
+  if (query === "granted" || !ask || !handle.requestPermission) {
+    return query;
+  }
+  return handle.requestPermission({ mode: "read" });
+}
+
+async function chooseAndRememberModelFiles() {
+  if (!window.showOpenFilePicker) {
+    setStatus("This browser cannot remember huge local GGUF files by handle. Use Chrome or Edge, or choose the shards manually each time.");
+    return;
+  }
+
+  const model = selectedModelConfig();
+  try {
+    const handles = await window.showOpenFilePicker({
+      multiple: true,
+      types: [{ description: "GGUF model shards", accept: { "application/octet-stream": [".gguf"] } }],
+      excludeAcceptAllOption: false,
+    });
+
+    const files = [];
+    for (const handle of handles) {
+      const file = await handle.getFile();
+      if (isExpectedModelShard(file, model)) {
+        files.push(file);
+      }
+    }
+
+    if (files.length !== model.shards) {
+      setStatus(`Selected ${files.length}/${model.shards} matching ${model.label} shards. Pick the exact five ${model.label} .gguf shards.`);
+      return;
+    }
+
+    await saveRememberedShardHandles(model.model_id, handles);
+    rememberedModelFiles = files;
+    describeSelectedModelFiles();
+    setStatus(`Remembered ${files.length} ${model.label} shard handles. The browser stores file handles, not the huge model bytes.`, 1);
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      console.error(error);
+      setStatus(`Could not remember shard files: ${error.message}`);
+    }
+  }
+}
+
+async function restoreRememberedModelFiles({ askPermission = true } = {}) {
+  const model = selectedModelConfig();
+  if (!indexedDB) {
+    return;
+  }
+
+  try {
+    const handles = await readRememberedShardHandles(model.model_id);
+    if (!handles.length) {
+      rememberedModelFiles = [];
+      describeSelectedModelFiles();
+      return;
+    }
+
+    const files = [];
+    for (const handle of handles) {
+      const permission = await permissionForHandle(handle, askPermission);
+      if (permission !== "granted") {
+        setStatus(`Remembered ${handles.length} shard handles, but the browser needs permission again. Click Restore remembered shards.`);
+        return;
+      }
+      const file = await handle.getFile();
+      if (isExpectedModelShard(file, model)) {
+        files.push(file);
+      }
+    }
+
+    rememberedModelFiles = files;
+    describeSelectedModelFiles();
+    if (files.length) {
+      setStatus(`Restored ${files.length}/${model.shards} remembered ${model.label} shards without storing the huge files in localStorage.`, files.length / model.shards);
+    }
+  } catch (error) {
+    console.error(error);
+    setStatus(`Could not restore remembered shards: ${error.message}`);
+  }
+}
+
 function allSelectedGgufFiles() {
   return [
+    ...rememberedModelFiles.filter(isGgufFile),
     ...elements.modelShardInputs.map((input) => input.files?.[0]).filter(isGgufFile),
     ...Array.from(elements.modelFilesInput.files ?? []).filter(isGgufFile),
   ];
@@ -847,7 +1115,7 @@ function updateShardFileNames() {
 
   elements.modelShardInputs.forEach((input, index) => {
     const selectedShardNumber = index + 1;
-    const file = input.files?.[0] ?? selectedGroup?.filesByShard.get(selectedShardNumber);
+    const file = selectedGroup?.filesByShard.get(selectedShardNumber) ?? input.files?.[0];
     const label = elements.modelShardNames[index];
     if (!label) {
       return;
@@ -924,6 +1192,7 @@ async function loadModel() {
   }
 
   const selectedModel = selectedModelConfig();
+  await restoreRememberedModelFiles({ askPermission: false });
   const shardFiles = selectedModelFiles(selectedModel);
 
   const missingNames = selectedModelMissingShards(selectedModel);
@@ -1097,13 +1366,56 @@ function resetActiveCharacter() {
   render();
 }
 
-function clearChat() {
-  const character = activeCharacter();
+function clearChat(characterId = state.activeCharacterId) {
+  const character = state.characters.find((item) => item.id === characterId) || activeCharacter();
   state.chats[character.id] = character.opening
     ? [{ role: "assistant", content: character.opening }]
     : [];
   saveAll();
   renderChat();
+  renderChatList();
+}
+
+function newChat() {
+  clearChat(state.activeCharacterId);
+}
+
+function deleteCurrentChat() {
+  const character = activeCharacter();
+  if (!window.confirm(`Delete the chat with ${character.name || "this character"}?`)) {
+    return;
+  }
+  clearChat(character.id);
+}
+
+function deleteAllChats() {
+  if (!window.confirm("Delete all chats? This cannot be undone.")) {
+    return;
+  }
+  state.chats = {};
+  saveAll();
+  renderChat();
+  renderChatList();
+}
+
+function selectChat(characterId) {
+  if (!state.characters.some((character) => character.id === characterId)) {
+    return;
+  }
+  state.activeCharacterId = characterId;
+  saveAll();
+  render();
+}
+
+function deleteChatByCharacterId(characterId) {
+  const character = state.characters.find((item) => item.id === characterId);
+  if (!character) {
+    return;
+  }
+  if (!window.confirm(`Delete the chat with ${character.name || "this character"}?`)) {
+    return;
+  }
+  clearChat(characterId);
 }
 
 function downloadChat() {
@@ -1155,39 +1467,68 @@ function focusRepositorySearch() {
   elements.repositoryUrl.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-elements.composerForm.addEventListener("submit", sendMessage);
-elements.backButton.addEventListener("click", () => elements.characterList.scrollIntoView({ behavior: "smooth" }));
-elements.clearProfileButton.addEventListener("click", clearProfile);
-elements.closeProfileButton.addEventListener("click", closeProfile);
-elements.downloadModelButton.addEventListener("click", downloadSelectedModelFiles);
-elements.loadModelButton.addEventListener("click", loadModel);
-elements.modelFilesInput.addEventListener("change", describeSelectedModelFiles);
+elements.composerForm?.addEventListener("submit", sendMessage);
+elements.backButton?.addEventListener("click", () => elements.characterList?.scrollIntoView({ behavior: "smooth" }));
+elements.clearProfileButton?.addEventListener("click", clearProfile);
+elements.closeProfileButton?.addEventListener("click", closeProfile);
+elements.deleteAllChatsButton?.addEventListener("click", deleteAllChats);
+elements.deleteCurrentChatButton?.addEventListener("click", deleteCurrentChat);
+elements.downloadModelButton?.addEventListener("click", downloadSelectedModelFiles);
+elements.loadModelButton?.addEventListener("click", loadModel);
+elements.modelFilesInput?.addEventListener("change", describeSelectedModelFiles);
 elements.modelShardInputs.forEach((input) => input.addEventListener("change", describeSelectedModelFiles));
-elements.modelSelect.addEventListener("change", () => {
+elements.modelSelect?.addEventListener("change", () => {
   if (!isModelLoading) {
     engine = null;
   }
+  rememberedModelFiles = [];
   renderModelDownloadLinks();
+  restoreRememberedModelFiles({ askPermission: false });
   describeSelectedModelFiles();
 });
-elements.moreButton.addEventListener("click", downloadChat);
-elements.newCharacterButton.addEventListener("click", newCharacter);
-elements.adultCheck.addEventListener("change", setAdultCheck);
-elements.personaForm.addEventListener("input", updateCharacterFromForm);
-elements.profileButton.addEventListener("click", openProfile);
-elements.profileForm.addEventListener("submit", saveProfile);
-elements.profileModal.addEventListener("click", (event) => {
+elements.moreButton?.addEventListener("click", downloadChat);
+elements.newCharacterButton?.addEventListener("click", newCharacter);
+elements.newChatButton?.addEventListener("click", newChat);
+elements.adultCheck?.addEventListener("change", setAdultCheck);
+elements.personaForm?.addEventListener("input", updateCharacterFromForm);
+elements.profileButton?.addEventListener("click", openProfile);
+elements.profileForm?.addEventListener("submit", saveProfile);
+elements.profileModal?.addEventListener("click", (event) => {
   if (event.target === elements.profileModal) {
     closeProfile();
   }
 });
-elements.repositoryForm.addEventListener("submit", loadRepository);
-elements.resetCharacterButton.addEventListener("click", resetActiveCharacter);
-elements.searchButton.addEventListener("click", focusRepositorySearch);
-elements.stopButton.addEventListener("click", stopGeneration);
-elements.temperatureInput.addEventListener("input", renderSettings);
-elements.topPInput.addEventListener("input", renderSettings);
+elements.repositoryForm?.addEventListener("submit", loadRepository);
+elements.resetCharacterButton?.addEventListener("click", resetActiveCharacter);
+elements.searchButton?.addEventListener("click", focusRepositorySearch);
+elements.stopButton?.addEventListener("click", stopGeneration);
+elements.temperatureInput?.addEventListener("input", renderSettings);
+elements.topPInput?.addEventListener("input", renderSettings);
+elements.lightThemeButton?.addEventListener("click", () => setThemeMode("light"));
+elements.darkThemeButton?.addEventListener("click", () => setThemeMode("dark"));
+elements.systemThemeButton?.addEventListener("click", () => setThemeMode("system"));
+elements.accentColorInput?.addEventListener("input", (event) => setAccentColor(event.target.value));
+elements.swatchButtons?.forEach((button) => button.addEventListener("click", () => setAccentColor(button.dataset.accent)));
+elements.rememberModelFilesButton?.addEventListener("click", chooseAndRememberModelFiles);
+elements.restoreModelFilesButton?.addEventListener("click", () => restoreRememberedModelFiles({ askPermission: true }));
+elements.chatList?.addEventListener("click", (event) => {
+  const item = event.target.closest("[data-chat-id]");
+  if (!item) {
+    return;
+  }
+
+  if (event.target.closest(".delete-chat-button")) {
+    deleteChatByCharacterId(item.dataset.chatId);
+    return;
+  }
+
+  selectChat(item.dataset.chatId);
+});
+
+window.matchMedia?.("(prefers-color-scheme: light)").addEventListener?.("change", applyTheme);
 
 renderModelOptions();
 renderModelDownloadLinks();
+applyTheme();
 render();
+restoreRememberedModelFiles({ askPermission: false });
