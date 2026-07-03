@@ -73,6 +73,8 @@ Talk2Me runs split GGUF shards directly in the browser through Wllama. There is 
 
 The user's browser still needs enough free RAM/disk to fetch and hold the shards before Wllama initializes them. A 2.4 GB browser model is realistic on some desktops and high-memory devices, but may fail on phones or storage-constrained browsers. If that happens, publish a smaller quantization for mobile users.
 
+Use the **Generation** panel's **Context Size** slider before loading a model to choose the Wllama context window. Larger values can keep more conversation available to the model, but they use more memory and require reloading the model after a change.
+
 Do not commit the current RoLLM shards to this Pages repo:
 
 - GitHub blocks normal repository files larger than 100 MiB.
@@ -107,8 +109,9 @@ GitHub release assets do not reliably allow browser JavaScript `fetch()` from ev
 1. Open Talk2Me in a browser with internet access.
 2. In the **Model** card, choose **RoLLM-Pro** or **RoLLM-Pro-adult** from the Runtime dropdown.
 3. Click **Download GGUF Files**. Talk2Me opens direct browser downloads for all five `.gguf` shards. If your browser asks, allow multiple downloads.
-4. After the downloads finish, click **Choose downloaded shards** and select all five `.gguf` files for the same model.
-5. Click **Load Selected Files** and wait until the status says the selected model is ready. Keep the tab open while loading because the shards are large. On typical desktops this can take several minutes, and slower CPUs, mobile browsers, or low-memory devices can take longer. The status line shows elapsed time while Wllama parses and initializes the five GGUF shards.
+4. In **Generation**, choose the context size you want for this model load.
+5. After the downloads finish, click **Choose downloaded shards** and select all five `.gguf` files for the same model.
+6. Click **Load Selected Files** and wait until the status says the selected model is ready. Keep the tab open while loading because the shards are large. On typical desktops this can take several minutes, and slower CPUs, mobile browsers, or low-memory devices can take longer. The status line shows elapsed time while Wllama parses and initializes the five GGUF shards.
 
 If you want to download the files manually, open the release page and download every shard for the model you want:
 

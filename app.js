@@ -76,6 +76,11 @@ const THEME_DEFAULT = {
   accent: "#7c4de3",
 };
 
+const CONTEXT_SIZE_DEFAULT = 2048;
+const CONTEXT_SIZE_MIN = 512;
+const CONTEXT_SIZE_MAX = 8192;
+const CONTEXT_SIZE_STEP = 512;
+
 const DEFAULT_CHARACTERS = [];
 
 const STORAGE_KEYS = {
@@ -83,6 +88,7 @@ const STORAGE_KEYS = {
   chats: "talk2me.chats.v2",
   activeCharacterId: "talk2me.activeCharacterId.v2",
   adultCheck: "talk2me.adultCheck.v1",
+  contextSize: "talk2me.contextSize.v1",
   profile: "talk2me.profile.v1",
   theme: "talk2me.theme.v1",
 };
@@ -107,6 +113,8 @@ const elements = {
   clearProfileButton: document.querySelector("#clearProfileButton"),
   closeProfileButton: document.querySelector("#closeProfileButton"),
   composerForm: document.querySelector("#composerForm"),
+  contextSizeInput: document.querySelector("#contextSizeInput"),
+  contextSizeValue: document.querySelector("#contextSizeValue"),
   disclaimerAcceptButton: document.querySelector("#disclaimerAcceptButton"),
   disclaimerModal: document.querySelector("#disclaimerModal"),
   loadRepositoryButton: document.querySelector("#loadRepositoryButton"),
@@ -177,6 +185,7 @@ const state = {
   adultCheck: readJson(STORAGE_KEYS.adultCheck, ADULT_CHECK_DEFAULT),
   characters: readJson(STORAGE_KEYS.characters, DEFAULT_CHARACTERS),
   chats: readJson(STORAGE_KEYS.chats, {}),
+  contextSize: readJson(STORAGE_KEYS.contextSize, CONTEXT_SIZE_DEFAULT),
   profile: readJson(STORAGE_KEYS.profile, PROFILE_DEFAULT),
   repository: null,
   theme: readJson(STORAGE_KEYS.theme, THEME_DEFAULT),
@@ -198,6 +207,8 @@ state.adultCheck = {
   ...ADULT_CHECK_DEFAULT,
   ...state.adultCheck,
 };
+
+state.contextSize = normalizeContextSize(state.contextSize);
 
 state.profile = {
   ...PROFILE_DEFAULT,
@@ -222,6 +233,24 @@ function readJson(key, fallback) {
 
 function writeJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function normalizeContextSize(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return CONTEXT_SIZE_DEFAULT;
+  }
+
+  const clamped = Math.min(CONTEXT_SIZE_MAX, Math.max(CONTEXT_SIZE_MIN, number));
+  return Math.round(clamped / CONTEXT_SIZE_STEP) * CONTEXT_SIZE_STEP;
+}
+
+function formatContextSize(value) {
+  return normalizeContextSize(value).toLocaleString("en-US");
+}
+
+function currentContextSize() {
+  return normalizeContextSize(elements.contextSizeInput?.value ?? state.contextSize);
 }
 
 function activeCharacter() {
@@ -249,6 +278,7 @@ function saveAll() {
   writeJson(STORAGE_KEYS.chats, state.chats);
   writeJson(STORAGE_KEYS.activeCharacterId, state.activeCharacterId);
   writeJson(STORAGE_KEYS.adultCheck, state.adultCheck);
+  writeJson(STORAGE_KEYS.contextSize, state.contextSize);
   writeJson(STORAGE_KEYS.profile, state.profile);
   writeJson(STORAGE_KEYS.theme, state.theme);
 }
@@ -995,8 +1025,22 @@ function renderChat() {
 }
 
 function renderSettings() {
+  const contextSize = normalizeContextSize(state.contextSize);
+  elements.contextSizeInput.value = String(contextSize);
+  elements.contextSizeValue.textContent = formatContextSize(contextSize);
   elements.temperatureValue.textContent = elements.temperatureInput.value;
   elements.topPValue.textContent = elements.topPInput.value;
+}
+
+function updateContextSize() {
+  const previousContextSize = state.contextSize;
+  state.contextSize = currentContextSize();
+  writeJson(STORAGE_KEYS.contextSize, state.contextSize);
+  renderSettings();
+
+  if (engine && !isModelLoading && state.contextSize !== previousContextSize) {
+    setStatus(`Context size set to ${formatContextSize(state.contextSize)} tokens. Reload the model for it to take effect.`, 1);
+  }
 }
 
 function renderExportControls() {
@@ -1344,6 +1388,7 @@ async function loadModel() {
   }
 
   const selectedModel = selectedModelConfig();
+  const contextSize = currentContextSize();
   await restoreRememberedModelFiles({ askPermission: false });
   const shardFiles = selectedModelFiles(selectedModel);
 
@@ -1379,10 +1424,10 @@ async function loadModel() {
       await engine.exit();
     }
 
-    appendModelDebug("Wllama runtime ready; starting GGUF load", { shards: shardFiles.length });
+    appendModelDebug("Wllama runtime ready; starting GGUF load", { shards: shardFiles.length, contextSize });
     const loadedEngine = new Wllama(wasmConfig, { parallelDownloads: 5 });
     await loadedEngine.loadModel(shardFiles, {
-      n_ctx: 2048,
+      n_ctx: contextSize,
       n_batch: 128,
       progressCallback: ({ loaded, total }) => {
         const progress = total ? loaded / total : latestProgress;
@@ -1391,7 +1436,7 @@ async function loadModel() {
     });
 
     engine = loadedEngine;
-    setStatus(`${selectedModel.label} is ready from selected GGUF files.`, 1);
+    setStatus(`${selectedModel.label} is ready with ${formatContextSize(contextSize)} token context from selected GGUF files.`, 1);
   } catch (error) {
     engine = null;
     console.error(error);
@@ -1799,6 +1844,7 @@ elements.repositoryForm?.addEventListener("submit", loadRepository);
 elements.resetCharacterButton?.addEventListener("click", resetActiveCharacter);
 elements.searchButton?.addEventListener("click", focusRepositorySearch);
 elements.stopButton?.addEventListener("click", stopGeneration);
+elements.contextSizeInput?.addEventListener("input", updateContextSize);
 elements.temperatureInput?.addEventListener("input", renderSettings);
 elements.topPInput?.addEventListener("input", renderSettings);
 elements.lightThemeButton?.addEventListener("click", () => setThemeMode("light"));

@@ -195,6 +195,14 @@ textarea { resize: vertical; line-height: 1.4; }
 .composer textarea { min-height: 42px; max-height: 150px; padding: 11px 4px; border: 0; background: transparent; box-shadow: none; resize: none; }
 .stacked-form textarea, .stacked-form input, select, input[type="number"] { margin-top: 6px; padding: 10px 11px; }
 input[type="color"] { height: 42px; padding: 4px; }
+.range-row input[type="range"] { min-width: 0; }
+.range-row output {
+  min-width: 4.5rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
 
 .settings-panel {
   overflow: auto;
