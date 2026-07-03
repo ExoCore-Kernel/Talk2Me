@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Talk2Me</title>
     <meta name="description" content="A private local GGUF roleplaying chat app for character cards and browser-based AI chat." />
-    <link rel="stylesheet" href="./styles.css?v=context-size-v1" />
+    <link rel="stylesheet" href="./styles.css?v=context-size-input-v1" />
   </head>
 
   <body>
@@ -164,7 +164,7 @@
 
         <details class="panel-card">
           <summary><span>Generation</span></summary>
-          <label>Context Size<div class="range-row"><input id="contextSizeInput" type="range" min="512" max="8192" step="512" value="2048" /><output id="contextSizeValue">2,048</output></div></label>
+          <label>Context Size<input id="contextSizeInput" type="number" min="512" max="8192" step="1" value="2048" inputmode="numeric" /></label>
           <label>Temperature<div class="range-row"><input id="temperatureInput" type="range" min="0.1" max="1.4" step="0.1" value="0.8" /><output id="temperatureValue">0.8</output></div></label>
           <label>Top P<div class="range-row"><input id="topPInput" type="range" min="0.1" max="1" step="0.05" value="0.9" /><output id="topPValue">0.9</output></div></label>
           <label>Max Tokens<input id="maxTokensInput" type="number" min="64" max="2048" step="64" value="512" /></label>
@@ -253,6 +253,6 @@
       </section>
     </div>
 
-    <script type="module" src="./app.js?v=context-size-v1"></script>
+    <script type="module" src="./app.js?v=context-size-input-v1"></script>
   </body>
 </html>

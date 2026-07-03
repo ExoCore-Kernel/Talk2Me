@@ -73,7 +73,7 @@ Talk2Me runs split GGUF shards directly in the browser through Wllama. There is 
 
 The user's browser still needs enough free RAM/disk to fetch and hold the shards before Wllama initializes them. A 2.4 GB browser model is realistic on some desktops and high-memory devices, but may fail on phones or storage-constrained browsers. If that happens, publish a smaller quantization for mobile users.
 
-Use the **Generation** panel's **Context Size** slider before loading a model to choose the Wllama context window. Larger values can keep more conversation available to the model, but they use more memory and require reloading the model after a change.
+Use the **Generation** panel's **Context Size** field before loading a model to type the Wllama context window in tokens. Larger values can keep more conversation available to the model, but they use more memory and require reloading the model after a change.
 
 Do not commit the current RoLLM shards to this Pages repo:
 

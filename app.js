@@ -79,7 +79,6 @@ const THEME_DEFAULT = {
 const CONTEXT_SIZE_DEFAULT = 2048;
 const CONTEXT_SIZE_MIN = 512;
 const CONTEXT_SIZE_MAX = 8192;
-const CONTEXT_SIZE_STEP = 512;
 
 const DEFAULT_CHARACTERS = [];
 
@@ -114,7 +113,6 @@ const elements = {
   closeProfileButton: document.querySelector("#closeProfileButton"),
   composerForm: document.querySelector("#composerForm"),
   contextSizeInput: document.querySelector("#contextSizeInput"),
-  contextSizeValue: document.querySelector("#contextSizeValue"),
   disclaimerAcceptButton: document.querySelector("#disclaimerAcceptButton"),
   disclaimerModal: document.querySelector("#disclaimerModal"),
   loadRepositoryButton: document.querySelector("#loadRepositoryButton"),
@@ -242,7 +240,7 @@ function normalizeContextSize(value) {
   }
 
   const clamped = Math.min(CONTEXT_SIZE_MAX, Math.max(CONTEXT_SIZE_MIN, number));
-  return Math.round(clamped / CONTEXT_SIZE_STEP) * CONTEXT_SIZE_STEP;
+  return Math.round(clamped);
 }
 
 function formatContextSize(value) {
@@ -1027,7 +1025,6 @@ function renderChat() {
 function renderSettings() {
   const contextSize = normalizeContextSize(state.contextSize);
   elements.contextSizeInput.value = String(contextSize);
-  elements.contextSizeValue.textContent = formatContextSize(contextSize);
   elements.temperatureValue.textContent = elements.temperatureInput.value;
   elements.topPValue.textContent = elements.topPInput.value;
 }
@@ -1389,6 +1386,9 @@ async function loadModel() {
 
   const selectedModel = selectedModelConfig();
   const contextSize = currentContextSize();
+  state.contextSize = contextSize;
+  writeJson(STORAGE_KEYS.contextSize, state.contextSize);
+  renderSettings();
   await restoreRememberedModelFiles({ askPermission: false });
   const shardFiles = selectedModelFiles(selectedModel);
 
@@ -1844,7 +1844,7 @@ elements.repositoryForm?.addEventListener("submit", loadRepository);
 elements.resetCharacterButton?.addEventListener("click", resetActiveCharacter);
 elements.searchButton?.addEventListener("click", focusRepositorySearch);
 elements.stopButton?.addEventListener("click", stopGeneration);
-elements.contextSizeInput?.addEventListener("input", updateContextSize);
+elements.contextSizeInput?.addEventListener("change", updateContextSize);
 elements.temperatureInput?.addEventListener("input", renderSettings);
 elements.topPInput?.addEventListener("input", renderSettings);
 elements.lightThemeButton?.addEventListener("click", () => setThemeMode("light"));
