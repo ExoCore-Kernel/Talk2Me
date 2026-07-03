@@ -175,6 +175,8 @@ let isGenerating = false;
 let isModelLoading = false;
 let activeMobileView = "chats";
 let wllamaModulePromise = null;
+let generationAbortController = null;
+let streamingRenderFrame = null;
 const systemPromptTemplates = new Map();
 let systemPromptTemplatePromise = null;
 
@@ -1073,6 +1075,19 @@ function render() {
   renderProfile();
 }
 
+function renderStreamingChat() {
+  if (streamingRenderFrame) {
+    return;
+  }
+
+  streamingRenderFrame = window.requestAnimationFrame(() => {
+    streamingRenderFrame = null;
+    renderChat();
+    renderChatList();
+    renderExportControls();
+  });
+}
+
 function selectedModelConfig() {
   return MODEL_OPTIONS.find((model) => model.model_id === elements.modelSelect.value) ?? MODEL_OPTIONS[0];
 }
@@ -1482,6 +1497,7 @@ async function sendMessage(event) {
   messages.push(assistantMessage);
   elements.messageInput.value = "";
   isGenerating = true;
+  generationAbortController = new AbortController();
   elements.sendButton.disabled = true;
   elements.stopButton.disabled = false;
   saveAll();
@@ -1490,26 +1506,52 @@ async function sendMessage(event) {
   renderExportControls();
 
   try {
-    const response = await engine.createChatCompletion({
+    let receivedStreamingContent = false;
+    await engine.createChatCompletion({
       messages: completionMessages,
+      stream: true,
+      abortSignal: generationAbortController.signal,
       temperature: Number(elements.temperatureInput.value),
       top_p: Number(elements.topPInput.value),
       max_tokens: Number(elements.maxTokensInput.value),
+      onData: (chunk) => {
+        const delta = chunk.choices?.[0]?.delta?.content ?? "";
+        if (!delta) {
+          return;
+        }
+        receivedStreamingContent = true;
+        assistantMessage.content += delta;
+        renderStreamingChat();
+      },
     });
-    assistantMessage.content = response.choices?.[0]?.message?.content ?? "[No response generated.]";
+
+    if (!receivedStreamingContent) {
+      assistantMessage.content = "[No response generated.]";
+    }
     saveAll();
     renderChat();
     renderChatList();
     renderExportControls();
   } catch (error) {
+    if (error?.name === "AbortError") {
+      assistantMessage.content ||= "[Generation stopped.]";
+      setStatus("Generation stopped.");
+      return;
+    }
+
     console.error(error);
     const errorMessage = error?.message || String(error);
     appendModelDebug("Generation failed", { error: errorMessage, stack: error?.stack });
     assistantMessage.content ||= `[Generation stopped or failed: ${errorMessage}]`;
     setStatus(`Generation stopped or failed: ${errorMessage}`);
   } finally {
+    if (streamingRenderFrame) {
+      window.cancelAnimationFrame(streamingRenderFrame);
+      streamingRenderFrame = null;
+    }
+    generationAbortController = null;
     isGenerating = false;
-    elements.sendButton.disabled = false;
+    elements.sendButton.disabled = !engine || !activeCharacter();
     elements.stopButton.disabled = true;
     saveAll();
     renderChat();
@@ -1519,12 +1561,14 @@ async function sendMessage(event) {
 }
 
 function stopGeneration() {
-  if (engine?.exit) {
-    engine.exit();
-    engine = null;
+  if (generationAbortController) {
+    generationAbortController.abort();
+    setStatus("Stopping generation...");
+    return;
   }
+
   isModelLoading = false;
-  setStatus("Stopping generation...");
+  setStatus("No generation is running.");
 }
 
 function updateCharacterFromForm() {
