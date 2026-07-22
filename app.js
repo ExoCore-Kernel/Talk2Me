@@ -175,7 +175,8 @@ let isGenerating = false;
 let isModelLoading = false;
 let activeMobileView = "chats";
 let wllamaModulePromise = null;
-let generationAbortController = null;
+let activeGeneration = null;
+let generationCounter = 0;
 let streamingRenderFrame = null;
 const systemPromptTemplates = new Map();
 let systemPromptTemplatePromise = null;
@@ -448,8 +449,12 @@ async function buildSystemPrompt(character = activeCharacter()) {
   return injectPromptPlaceholders(promptTemplateText(template), character);
 }
 
-async function chatMessages() {
-  return [{ role: "system", content: await buildSystemPrompt() }, ...activeChat({ create: false })];
+async function chatMessages(character, messages) {
+  // Freeze the exact conversation before awaiting anything. This prevents a
+  // character switch during prompt loading from mixing two chats together.
+  const conversationSnapshot = messages.map(({ role, content }) => ({ role, content }));
+  const systemPrompt = await buildSystemPrompt(character);
+  return [{ role: "system", content: systemPrompt }, ...conversationSnapshot];
 }
 
 function appendModelDebug(message, details = {}) {
@@ -1011,7 +1016,15 @@ function renderChat() {
 
       const meta = document.createElement("div");
       meta.className = "message-meta";
-      meta.textContent = message.role === "user" ? "Player" : displayCharacterName(character);
+      const speaker = message.role === "user" ? "Player" : displayCharacterName(character);
+      const generationState = message.generationState === "generating"
+        ? " · generating"
+        : message.finishReason === "length"
+          ? " · reached token/context limit"
+          : message.generationState === "stopped"
+            ? " · stopped"
+            : "";
+      meta.textContent = `${speaker}${generationState}`;
 
       const bubble = document.createElement("div");
       bubble.className = "message-bubble";
@@ -1075,14 +1088,18 @@ function render() {
   renderProfile();
 }
 
-function renderStreamingChat() {
+function renderStreamingChat(characterId) {
   if (streamingRenderFrame) {
     return;
   }
 
   streamingRenderFrame = window.requestAnimationFrame(() => {
     streamingRenderFrame = null;
-    renderChat();
+    // A generation may continue while the user views another chat. Never
+    // redraw the visible chat with data from a different character.
+    if (state.activeCharacterId === characterId) {
+      renderChat();
+    }
     renderChatList();
     renderExportControls();
   });
@@ -1474,7 +1491,8 @@ async function sendMessage(event) {
     return;
   }
 
-  if (!activeCharacter()) {
+  const character = activeCharacter();
+  if (!character) {
     setStatus("Create a persona before sending.");
     render();
     return;
@@ -1490,14 +1508,36 @@ async function sendMessage(event) {
     return;
   }
 
-  const messages = activeChat();
+  // Capture immutable request ownership. Streaming must never consult the
+  // currently selected character to decide where a token belongs.
+  const characterId = character.id;
+  const messages = state.chats[characterId] ?? (state.chats[characterId] = character.opening
+    ? [{ role: "assistant", content: character.opening }]
+    : []);
+
   messages.push({ role: "user", content });
-  const completionMessages = await chatMessages();
-  const assistantMessage = { role: "assistant", content: "" };
+  const completionMessages = await chatMessages(character, messages);
+  const assistantMessage = {
+    role: "assistant",
+    content: "",
+    generationState: "generating",
+    finishReason: null,
+  };
   messages.push(assistantMessage);
+
+  const generationId = ++generationCounter;
+  const generation = {
+    id: generationId,
+    characterId,
+    assistantMessage,
+    discardOutput: false,
+    finishReason: null,
+    usage: null,
+  };
+
+  activeGeneration = generation;
   elements.messageInput.value = "";
   isGenerating = true;
-  generationAbortController = new AbortController();
   elements.sendButton.disabled = true;
   elements.stopButton.disabled = false;
   saveAll();
@@ -1507,49 +1547,96 @@ async function sendMessage(event) {
 
   try {
     let receivedStreamingContent = false;
+    const requestedMaxTokens = Number(elements.maxTokensInput.value);
+
     await engine.createChatCompletion({
       messages: completionMessages,
       stream: true,
-      abortSignal: generationAbortController.signal,
+      // Wllama currently runs one llama.cpp slot. Explicitly disabling prompt
+      // cache reuse prevents one character's KV prefix from being reused by a
+      // completely different character/chat.
+      cache_prompt: false,
       temperature: Number(elements.temperatureInput.value),
       top_p: Number(elements.topPInput.value),
-      max_tokens: Number(elements.maxTokensInput.value),
+      max_tokens: requestedMaxTokens,
       onData: (chunk) => {
-        const delta = chunk.choices?.[0]?.delta?.content ?? "";
-        if (!delta) {
+        if (activeGeneration?.id !== generationId) {
           return;
         }
+
+        const choice = chunk.choices?.[0];
+        if (choice?.finish_reason) {
+          generation.finishReason = choice.finish_reason;
+        }
+        if (chunk.usage) {
+          generation.usage = chunk.usage;
+        }
+
+        const delta = choice?.delta?.content ?? "";
+        if (!delta || generation.discardOutput) {
+          return;
+        }
+
         receivedStreamingContent = true;
         assistantMessage.content += delta;
-        renderStreamingChat();
+        renderStreamingChat(characterId);
       },
     });
 
-    if (!receivedStreamingContent) {
-      assistantMessage.content = "[No response generated.]";
+    assistantMessage.finishReason = generation.finishReason;
+
+    if (generation.discardOutput) {
+      assistantMessage.generationState = "stopped";
+      assistantMessage.content ||= "[Generation stopped.]";
+      setStatus("Generation stopped safely.");
+    } else {
+      assistantMessage.generationState = "complete";
+      if (!receivedStreamingContent) {
+        assistantMessage.content = "[No response generated.]";
+      }
+
+      if (generation.finishReason === "length") {
+        setStatus("Response reached the output or context limit. The next message will not silently reuse another chat's generation state.");
+      } else {
+        setStatus("Response complete.");
+      }
     }
+
+    appendModelDebug("Generation finished", {
+      characterId,
+      finishReason: generation.finishReason ?? "unknown",
+      promptTokens: generation.usage?.prompt_tokens,
+      completionTokens: generation.usage?.completion_tokens,
+      totalTokens: generation.usage?.total_tokens,
+      requestedMaxTokens,
+      contextSize: state.contextSize,
+    });
+
     saveAll();
-    renderChat();
+    if (state.activeCharacterId === characterId) {
+      renderChat();
+    }
     renderChatList();
     renderExportControls();
   } catch (error) {
-    if (error?.name === "AbortError") {
-      assistantMessage.content ||= "[Generation stopped.]";
-      setStatus("Generation stopped.");
-      return;
-    }
-
     console.error(error);
     const errorMessage = error?.message || String(error);
-    appendModelDebug("Generation failed", { error: errorMessage, stack: error?.stack });
-    assistantMessage.content ||= `[Generation stopped or failed: ${errorMessage}]`;
-    setStatus(`Generation stopped or failed: ${errorMessage}`);
+    appendModelDebug("Generation failed", {
+      characterId,
+      error: errorMessage,
+      stack: error?.stack,
+    });
+    assistantMessage.generationState = "failed";
+    assistantMessage.content ||= `[Generation failed: ${errorMessage}]`;
+    setStatus(`Generation failed: ${errorMessage}`);
   } finally {
     if (streamingRenderFrame) {
       window.cancelAnimationFrame(streamingRenderFrame);
       streamingRenderFrame = null;
     }
-    generationAbortController = null;
+    if (activeGeneration?.id === generationId) {
+      activeGeneration = null;
+    }
     isGenerating = false;
     elements.sendButton.disabled = !engine || !activeCharacter();
     elements.stopButton.disabled = true;
@@ -1561,9 +1648,16 @@ async function sendMessage(event) {
 }
 
 function stopGeneration() {
-  if (generationAbortController) {
-    generationAbortController.abort();
-    setStatus("Stopping generation...");
+  if (activeGeneration && isGenerating) {
+    // Wllama's AbortSignal stops JavaScript polling, but it does not provide a
+    // reliable native hard-cancel. Abandoning the result queue can make the
+    // next request consume leftover chunks. Instead, keep draining the current
+    // generation and simply discard any further text.
+    activeGeneration.discardOutput = true;
+    activeGeneration.assistantMessage.generationState = "stopping";
+    setStatus("Stopping safely. Waiting for the current Wllama generation to drain before another message can be sent.");
+    renderChat();
+    renderChatList();
     return;
   }
 
@@ -1625,6 +1719,11 @@ function resetActiveCharacter() {
 }
 
 function clearChat(characterId = state.activeCharacterId) {
+  if (activeGeneration?.characterId === characterId) {
+    setStatus("That chat is still generating. Stop it safely or wait for it to finish before clearing it.");
+    return false;
+  }
+
   const character = state.characters.find((item) => item.id === characterId) || activeCharacter();
   if (!character) {
     return;
@@ -1635,6 +1734,7 @@ function clearChat(characterId = state.activeCharacterId) {
   saveAll();
   renderChat();
   renderChatList();
+  return true;
 }
 
 function newChat() {
@@ -1657,6 +1757,11 @@ function deleteCurrentChat() {
 }
 
 function deleteAllChats() {
+  if (isGenerating) {
+    setStatus("Wait for the current generation to finish before deleting all chats.");
+    return;
+  }
+
   const hasChats = Object.values(state.chats).some((messages) => Array.isArray(messages) && messages.length);
   if (!hasChats) {
     setStatus("No chats to delete.");
